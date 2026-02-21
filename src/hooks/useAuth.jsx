@@ -11,9 +11,34 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true
 
-    // Get initial session
-    supabase.auth.getSession()
-      .then(({ data: { session }, error }) => {
+    async function init() {
+      try {
+        // First check if there's an auth code in the URL (OAuth redirect)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const queryParams = new URLSearchParams(window.location.search)
+        const hasAuthParams = hashParams.has('access_token') || queryParams.has('code')
+
+        if (hasAuthParams) {
+          // Let Supabase handle the OAuth exchange
+          const { data: { session }, error } = await supabase.auth.getSession()
+          if (!mounted) return
+          if (error) {
+            console.error('OAuth exchange error:', error)
+            // Clean URL params
+            window.history.replaceState({}, '', window.location.pathname)
+            setLoading(false)
+            return
+          }
+          if (session?.user) {
+            setUser(session.user)
+            await fetchProfile(session.user.id)
+            window.history.replaceState({}, '', window.location.pathname)
+            return
+          }
+        }
+
+        // Normal session check
+        const { data: { session }, error } = await supabase.auth.getSession()
         if (!mounted) return
         if (error) {
           console.error('getSession error:', error)
@@ -22,42 +47,44 @@ export function AuthProvider({ children }) {
         }
         setUser(session?.user ?? null)
         if (session?.user) {
-          fetchProfile(session.user.id)
+          await fetchProfile(session.user.id)
         } else {
           setLoading(false)
         }
-      })
-      .catch((err) => {
-        console.error('getSession failed:', err)
+      } catch (err) {
+        console.error('Auth init failed:', err)
         if (mounted) setLoading(false)
-      })
+      }
+    }
 
-    // Listen for auth changes
+    init()
+
+    // Listen for auth changes (sign in, sign out, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!mounted) return
-        setUser(session?.user ?? null)
+
+        if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+          return
+        }
+
         if (session?.user) {
+          setUser(session.user)
           await fetchProfile(session.user.id)
         } else {
+          setUser(null)
           setProfile(null)
           setLoading(false)
         }
       }
     )
 
-    // Safety timeout — never stay stuck on loading
-    const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('Auth loading timed out after 5s')
-        setLoading(false)
-      }
-    }, 5000)
-
     return () => {
       mounted = false
       subscription.unsubscribe()
-      clearTimeout(timeout)
     }
   }, [])
 
@@ -110,6 +137,8 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    // Clear local storage before signing out to prevent stale tokens
+    localStorage.removeItem('osps-auth')
     const { error } = await supabase.auth.signOut()
     if (error) throw error
   }
