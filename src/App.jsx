@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import AuthGuard from '@/components/auth/AuthGuard'
 import Landing from '@/pages/Landing'
 import Dashboard from '@/pages/Dashboard'
+import CreateGroup from '@/pages/CreateGroup'
 import GroupDetail from '@/pages/GroupDetail'
 import AddExpense from '@/pages/AddExpense'
 import JoinGroup from '@/pages/JoinGroup'
@@ -30,6 +31,7 @@ function AppRoutes() {
       {/* Protected */}
       <Route element={<AuthGuard />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/create" element={<CreateGroup />} />
         <Route path="/group/:groupId" element={<GroupDetail />} />
         <Route path="/group/:groupId/add" element={<AddExpense />} />
       </Route>
