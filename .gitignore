@@ -1,1 +1,61 @@
-*.env
+# ── Dependencies ─────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Build output ─────────────────────────
+dist/
+dist-ssr/
+build/
+*.local
+
+# ── Environment / secrets ────────────────
+.env
+.env.local
+.env.*.local
+
+# ── IDE / Editor ─────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ── macOS ────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Windows ──────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Linux ────────────────────────────────
+*~
+
+# ── Logs ─────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Testing ──────────────────────────────
+coverage/
+*.lcov
+
+# ── Netlify ──────────────────────────────
+.netlify/
+
+# ── Supabase ─────────────────────────────
+.supabase/
+
+# ── Misc ─────────────────────────────────
+*.tgz
+.cache/
