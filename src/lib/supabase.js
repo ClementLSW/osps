@@ -17,5 +17,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     persistSession: true,
     autoRefreshToken: true,
+    // Bypass Navigator LockManager entirely — avoids timeout issues
+    lock: async (_name, _acquireTimeout, fn) => {
+      return await fn()
+    },
   },
 })
