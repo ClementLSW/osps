@@ -24,6 +24,7 @@ export default function GroupDetail() {
   const [settlingIndex, setSettlingIndex] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [receiptUrls, setReceiptUrls] = useState({}) // expenseId → signed URL
 
   const { transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
@@ -164,6 +165,24 @@ export default function GroupDetail() {
 
   function getMemberName(userId) {
     return members.find(m => m.id === userId)?.display_name || 'Unknown'
+  }
+
+  async function handleExpand(expense) {
+    const newId = expandedId === expense.id ? null : expense.id
+
+    // Load signed URL for receipt if needed
+    if (newId && expense.receipt_url && !receiptUrls[expense.id]) {
+      const { data } = await getSupabase()
+        .storage
+        .from('receipts')
+        .createSignedUrl(expense.receipt_url, 3600) // 1 hour
+
+      if (data?.signedUrl) {
+        setReceiptUrls(prev => ({ ...prev, [expense.id]: data.signedUrl }))
+      }
+    }
+
+    setExpandedId(newId)
   }
 
   if (loading) {
@@ -314,7 +333,7 @@ export default function GroupDetail() {
               >
                 {/* Summary row — always visible, tappable */}
                 <button
-                  onClick={() => setExpandedId(isExpanded ? null : expense.id)}
+                  onClick={() => handleExpand(expense)}
                   className="w-full flex items-center justify-between py-3 text-left"
                 >
                   <div className="min-w-0 flex-1">
@@ -374,6 +393,27 @@ export default function GroupDetail() {
                       <p className="text-sm text-osps-gray italic mb-3">
                         "{expense.notes}"
                       </p>
+                    )}
+
+                    {/* Receipt image */}
+                    {receiptUrls[expense.id] && (
+                      <div className="mb-3">
+                        <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider mb-2">
+                          Receipt
+                        </p>
+                        <a
+                          href={receiptUrls[expense.id]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <img
+                            src={receiptUrls[expense.id]}
+                            alt="Receipt"
+                            className="w-full max-w-[200px] rounded-xl border border-osps-gray-light
+                                       hover:opacity-80 transition-opacity cursor-pointer"
+                          />
+                        </a>
+                      </div>
                     )}
 
                     {/* Edit / Delete — creator or admin */}

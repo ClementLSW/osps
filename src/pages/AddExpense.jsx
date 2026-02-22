@@ -45,6 +45,7 @@ export default function AddExpense() {
   // OCR state
   const fileInputRef = useRef(null)
   const [scanning, setScanning] = useState(false)
+  const [receiptImage, setReceiptImage] = useState(null) // base64 data URL
 
   useEffect(() => {
     loadGroupData()
@@ -306,6 +307,11 @@ export default function AddExpense() {
       await saveLineItems(expense.id)
     }
 
+    // Upload receipt image if we have one
+    if (receiptImage) {
+      await uploadReceipt(expense.id)
+    }
+
     toast.success('Expense added!')
     navigate(`/group/${groupId}`)
   }
@@ -364,6 +370,11 @@ export default function AddExpense() {
       await saveLineItems(editId)
     }
 
+    // Upload receipt image if we have a new one
+    if (receiptImage) {
+      await uploadReceipt(editId)
+    }
+
     toast.success('Expense updated!')
     navigate(`/group/${groupId}`)
   }
@@ -384,6 +395,43 @@ export default function AddExpense() {
           await getSupabase().from('line_item_assignments').insert(assignments)
         }
       }
+    }
+  }
+
+  /**
+   * Upload receipt image to Supabase Storage and update the expense record.
+   * Path: receipts/{groupId}/{expenseId}.jpg
+   */
+  async function uploadReceipt(expenseId) {
+    try {
+      // Convert base64 data URL to blob
+      const res = await fetch(receiptImage)
+      const blob = await res.blob()
+
+      const path = `${groupId}/${expenseId}.jpg`
+
+      const { error: uploadError } = await getSupabase()
+        .storage
+        .from('receipts')
+        .upload(path, blob, {
+          contentType: 'image/jpeg',
+          upsert: true, // overwrite if editing
+        })
+
+      if (uploadError) {
+        console.error('Receipt upload failed:', uploadError)
+        // Non-blocking — expense is already saved
+        return
+      }
+
+      // Store the path in the expense record
+      await getSupabase()
+        .from('expenses')
+        .update({ receipt_url: path })
+        .eq('id', expenseId)
+    } catch (err) {
+      console.error('Receipt upload error:', err)
+      // Non-blocking — expense is already saved
     }
   }
 
@@ -442,6 +490,9 @@ export default function AddExpense() {
     try {
       // Compress + strip EXIF
       const base64 = await compressImage(file)
+
+      // Store for upload on save
+      setReceiptImage(base64)
 
       // Send to server for OCR
       const res = await fetch('/api/parse-receipt', {
@@ -539,6 +590,25 @@ export default function AddExpense() {
               </>
             )}
           </button>
+
+          {/* Receipt thumbnail preview */}
+          {receiptImage && !scanning && (
+            <div className="mt-3 flex items-center gap-3">
+              <img
+                src={receiptImage}
+                alt="Receipt"
+                className="w-12 h-12 rounded-lg object-cover border border-osps-gray-light"
+              />
+              <span className="text-xs text-osps-gray font-body flex-1">Receipt captured</span>
+              <button
+                type="button"
+                onClick={() => setReceiptImage(null)}
+                className="text-xs text-osps-gray hover:text-osps-red transition-colors"
+              >
+                Remove
+              </button>
+            </div>
+          )}
         </div>
       )}
 
