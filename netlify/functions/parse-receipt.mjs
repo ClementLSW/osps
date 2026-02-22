@@ -21,8 +21,8 @@
 
 import { parseCookies, decrypt } from './_utils/cookies.mjs'
 
-const PRIMARY_MODEL = 'qwen/qwen2.5-vl-32b-instruct:free'
-const FALLBACK_MODEL = 'qwen/qwen2.5-vl-72b-instruct:free'
+const PRIMARY_MODEL = 'qwen/qwen3-vl-30b-a3b-thinking'
+const FALLBACK_MODEL = 'google/gemini-2.0-flash-001'
 
 const SYSTEM_PROMPT = `You are a receipt parser. Given an image of a receipt, extract the data into JSON.
 
@@ -45,14 +45,19 @@ OUTPUT FORMAT:
   "subtotal": 28.40,
   "tax": 2.56,
   "service_charge": 2.84,
+  "delivery_fee": 3.50,
+  "discount": -5.00,
   "total": 33.80
 }
 
 NOTES:
-- "items" should be individual line items, NOT subtotal/tax/total
-- If tax or service_charge is not listed, omit those fields
+- "items" should be individual line items, NOT subtotal/tax/total/fees
+- If tax, service_charge, delivery_fee, or discount is not listed, omit those fields
+- Discounts should be negative numbers (e.g. -5.00)
+- Delivery fees and platform fees should be combined into delivery_fee
 - If the receipt is from Singapore, look for 9% GST and 10% service charge
-- Handle English, Chinese, and Malay text on receipts`
+- Handle English, Chinese, and Malay text on receipts
+- For digital orders (Grab, foodpanda, etc), capture delivery and platform fees`
 
 export default async (request) => {
   const openrouterKey = process.env.OPENROUTER_API_KEY
@@ -151,8 +156,9 @@ async function callOpenRouter(apiKey, model, imageBase64) {
       return { error: 'No response from vision model', fallback: true }
     }
 
-    // Parse JSON from model output — strip markdown fences if present
+    // Parse JSON from model output — strip markdown fences and thinking tags
     const cleaned = content
+      .replace(/<think>[\s\S]*?<\/think>/g, '') // Qwen3 thinking models
       .replace(/```json\s*/g, '')
       .replace(/```\s*/g, '')
       .trim()
@@ -175,44 +181,42 @@ async function callOpenRouter(apiKey, model, imageBase64) {
 }
 
 /**
- * Distribute tax and service charge proportionally into item amounts.
+ * Normalize item amounts so they sum to the receipt total.
  *
- * If the receipt has a subtotal of $100, tax of $9, and service charge of $10,
- * each item's amount gets multiplied by (100 + 9 + 10) / 100 = 1.19.
- * This way the line_item split mode distributes these costs fairly.
+ * Uses a single ratio: total / sum_of_items. This automatically
+ * handles any combination of adjustments:
+ *   - Tax (9% GST) → ratio > 1 → items scale up
+ *   - Service charge (10%) → ratio > 1 → items scale up
+ *   - Discounts/promos → ratio < 1 → items scale down
+ *   - Delivery/platform fees → ratio > 1 → items scale up
+ *   - All of the above combined → one multiplier handles it
  */
 function normalizeItems(data) {
   const items = data.items || []
-  const subtotal = data.subtotal || items.reduce((sum, i) => sum + (i.amount * (i.quantity || 1)), 0)
-  const tax = data.tax || 0
-  const serviceCharge = data.service_charge || 0
-  const extras = tax + serviceCharge
+  const itemSum = items.reduce((sum, i) => sum + (i.amount * (i.quantity || 1)), 0)
+  const total = data.total || itemSum
 
   let normalizedItems = items
 
-  if (extras > 0 && subtotal > 0) {
-    const multiplier = (subtotal + extras) / subtotal
+  if (itemSum > 0 && Math.abs(total - itemSum) > 0.01) {
+    const multiplier = total / itemSum
     normalizedItems = items.map(item => ({
       ...item,
       amount: Math.round(item.amount * multiplier * 100) / 100,
     }))
   }
 
-  // Compute total from normalized items (may differ slightly from receipt due to rounding)
-  const computedTotal = normalizedItems.reduce(
-    (sum, i) => sum + (i.amount * (i.quantity || 1)), 0
-  )
-
   return {
     merchant: data.merchant || '',
     currency: data.currency || null,
     items: normalizedItems,
-    total: data.total || Math.round(computedTotal * 100) / 100,
-    // Include raw values for transparency
+    total: Math.round(total * 100) / 100,
     raw: {
       subtotal: data.subtotal,
       tax: data.tax,
       service_charge: data.service_charge,
+      delivery_fee: data.delivery_fee,
+      discount: data.discount,
       total: data.total,
     },
   }
