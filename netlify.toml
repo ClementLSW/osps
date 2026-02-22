@@ -64,6 +64,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/parse-receipt"
+  to = "/.netlify/functions/parse-receipt"
+  status = 200
+
+[[redirects]]
   from = "/api/db"
   to = "/.netlify/functions/db-query"
   status = 200

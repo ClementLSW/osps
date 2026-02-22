@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -41,6 +41,10 @@ export default function AddExpense() {
   const [percentages, setPercentages] = useState({})
   const [shares, setShares] = useState({})
   const [lineItems, setLineItems] = useState([{ name: '', amount: '', assignments: {} }])
+
+  // OCR state
+  const fileInputRef = useRef(null)
+  const [scanning, setScanning] = useState(false)
 
   useEffect(() => {
     loadGroupData()
@@ -379,6 +383,102 @@ export default function AddExpense() {
     }
   }
 
+  // ── Receipt scanning ──────────────────────────────────────
+
+  /**
+   * Compress an image file using canvas.
+   * Resizes to max 1200px on long edge, JPEG at 0.7 quality.
+   * Canvas redraw naturally strips EXIF metadata (GPS, etc).
+   * Returns a base64 data URL string.
+   */
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX_SIZE = 1200
+        let { width, height } = img
+
+        if (width > MAX_SIZE || height > MAX_SIZE) {
+          if (width > height) {
+            height = Math.round(height * (MAX_SIZE / width))
+            width = MAX_SIZE
+          } else {
+            width = Math.round(width * (MAX_SIZE / height))
+            height = MAX_SIZE
+          }
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+
+        resolve(canvas.toDataURL('image/jpeg', 0.7))
+      }
+      img.onerror = () => reject(new Error('Failed to load image'))
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  async function handleScanReceipt(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Reset file input so the same file can be re-selected
+    e.target.value = ''
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image too large — max 10MB')
+      return
+    }
+
+    setScanning(true)
+
+    try {
+      // Compress + strip EXIF
+      const base64 = await compressImage(file)
+
+      // Send to server for OCR
+      const res = await fetch('/api/parse-receipt', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64 }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to parse receipt')
+        return
+      }
+
+      // Auto-populate form
+      if (data.merchant) setTitle(data.merchant)
+      if (data.total) setTotalAmount(String(data.total))
+
+      if (data.items?.length > 0) {
+        setSplitMode('line_item')
+        setLineItems(
+          data.items.map(item => ({
+            name: item.name,
+            amount: String(item.amount),
+            assignments: {},
+          }))
+        )
+        toast.success(`Parsed ${data.items.length} items — assign members to split`)
+      } else {
+        toast.success('Receipt parsed — review the details')
+      }
+    } catch (err) {
+      console.error('Receipt scan error:', err)
+      toast.error('Something went wrong — try again')
+    } finally {
+      setScanning(false)
+    }
+  }
+
   if (loadingEdit) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8">
@@ -402,6 +502,41 @@ export default function AddExpense() {
       <h1 className="text-2xl font-display font-bold mb-6">
         {isEdit ? 'Edit Expense' : 'Add Expense'}
       </h1>
+
+      {/* Receipt scanner — only show on new expenses */}
+      {!isEdit && (
+        <div className="mb-6">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic"
+            onChange={handleScanReceipt}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={scanning}
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl
+                       border-2 border-dashed border-osps-gray-light text-osps-gray
+                       hover:border-osps-red/30 hover:text-osps-red
+                       active:scale-[0.98] transition-all duration-150
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {scanning ? (
+              <>
+                <span className="animate-spin inline-block w-4 h-4 border-2 border-osps-red border-t-transparent rounded-full" />
+                <span className="font-display font-medium text-sm text-osps-red">Parsing receipt...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-lg">📷</span>
+                <span className="font-display font-medium text-sm">Scan receipt</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Title & Amount */}
