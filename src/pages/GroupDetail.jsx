@@ -57,7 +57,8 @@ export default function GroupDetail() {
       .select(`
         *,
         splits:expense_splits (user_id, owed_amount),
-        payer:paid_by (display_name)
+        payer:paid_by (display_name),
+        line_items (id, name, amount, quantity)
       `)
       .eq('group_id', groupId)
       .order('expense_date', { ascending: false })
@@ -347,6 +348,26 @@ export default function GroupDetail() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Receipt items — shown when line items exist, any split mode */}
+                    {expense.line_items?.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider mb-2">
+                          Receipt items
+                        </p>
+                        <div className="space-y-1">
+                          {expense.line_items.map(item => (
+                            <div key={item.id} className="flex justify-between text-sm">
+                              <span className="text-osps-gray">
+                                {item.quantity > 1 && <span className="text-osps-gray/60">{item.quantity}× </span>}
+                                {item.name}
+                              </span>
+                              <span className="currency text-osps-gray">{formatCurrency(item.amount, expense.currency)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Notes */}
                     {expense.notes && (

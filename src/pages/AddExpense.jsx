@@ -153,32 +153,34 @@ export default function AddExpense() {
       }
 
       case 'line_item': {
-        // Fetch line items with assignments
-        const { data: items } = await getSupabase()
-          .from('line_items')
-          .select(`
-            *,
-            assignments:line_item_assignments (user_id, share_count)
-          `)
-          .eq('expense_id', editId)
-          .order('sort_order', { ascending: true })
-
-        if (items?.length > 0) {
-          const li = items.map(item => {
-            const assignments = {}
-            item.assignments?.forEach(a => {
-              assignments[a.user_id] = true
-            })
-            return {
-              name: item.name,
-              amount: String(item.amount),
-              assignments,
-            }
-          })
-          setLineItems(li)
-        }
+        // Line items are loaded below for all split modes
         break
       }
+    }
+
+    // Always load line items if they exist (OCR data persists across split mode changes)
+    const { data: items } = await getSupabase()
+      .from('line_items')
+      .select(`
+        *,
+        assignments:line_item_assignments (user_id, share_count)
+      `)
+      .eq('expense_id', editId)
+      .order('sort_order', { ascending: true })
+
+    if (items?.length > 0) {
+      const li = items.map(item => {
+        const assignments = {}
+        item.assignments?.forEach(a => {
+          assignments[a.user_id] = true
+        })
+        return {
+          name: item.name,
+          amount: String(item.amount),
+          assignments,
+        }
+      })
+      setLineItems(li)
     }
 
     setLoadingEdit(false)
@@ -298,8 +300,9 @@ export default function AddExpense() {
       return
     }
 
-    // If line items, save those too
-    if (splitMode === 'line_item') {
+    // Save line items if they exist (e.g. from OCR scan, even if split mode is equal)
+    const hasLineItems = lineItems.some(i => i.name && parseFloat(i.amount) > 0)
+    if (hasLineItems) {
       await saveLineItems(expense.id)
     }
 
@@ -355,8 +358,9 @@ export default function AddExpense() {
       return
     }
 
-    // If line items, save those too
-    if (splitMode === 'line_item') {
+    // Save line items if they exist (persists OCR data across split mode changes)
+    const hasLineItems = lineItems.some(i => i.name && parseFloat(i.amount) > 0)
+    if (hasLineItems) {
       await saveLineItems(editId)
     }
 
