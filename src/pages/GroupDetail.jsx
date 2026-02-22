@@ -99,6 +99,12 @@ export default function GroupDetail() {
   }
 
   async function deleteExpense(expenseId) {
+    // Delete receipt image from storage if it exists
+    const expense = expenses.find(e => e.id === expenseId)
+    if (expense?.receipt_url) {
+      await getSupabase().storage.from('receipts').remove([expense.receipt_url])
+    }
+
     const { error } = await getSupabase()
       .from('expenses')
       .delete()
