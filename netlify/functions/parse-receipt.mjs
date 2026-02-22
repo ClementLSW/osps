@@ -21,8 +21,8 @@
 
 import { parseCookies, decrypt } from './_utils/cookies.mjs'
 
-const PRIMARY_MODEL = 'qwen/qwen3-vl-30b-a3b-thinking'
-const FALLBACK_MODEL = 'google/gemini-2.0-flash-001'
+const PRIMARY_MODEL = 'google/gemini-2.0-flash-001'
+const FALLBACK_MODEL = 'qwen/qwen3-vl-30b-a3b-thinking'
 
 const SYSTEM_PROMPT = `You are a receipt parser. Given an image of a receipt, extract the data into JSON.
 
@@ -84,12 +84,12 @@ export default async (request) => {
       return respond(400, { error: 'No image provided' })
     }
 
-    // Try primary model, fall back to larger model on failure
-    let result = await callOpenRouter(openrouterKey, PRIMARY_MODEL, image)
+    // Try primary model with auto-retry, then fall back
+    let result = await callWithRetry(openrouterKey, PRIMARY_MODEL, image)
 
     if (result.error && result.fallback) {
       console.log('Primary model failed, trying fallback...')
-      result = await callOpenRouter(openrouterKey, FALLBACK_MODEL, image)
+      result = await callWithRetry(openrouterKey, FALLBACK_MODEL, image)
     }
 
     if (result.error) {
@@ -106,10 +106,31 @@ export default async (request) => {
   }
 }
 
+/**
+ * Retry wrapper — tries the model once, retries on transient failure.
+ */
+async function callWithRetry(apiKey, model, image, retries = 1) {
+  let result = await callOpenRouter(apiKey, model, image)
+
+  for (let i = 0; i < retries && result.error && result.fallback; i++) {
+    console.log(`Retrying ${model} (attempt ${i + 2})...`)
+    await new Promise(r => setTimeout(r, 1000)) // 1s backoff
+    result = await callOpenRouter(apiKey, model, image)
+  }
+
+  return result
+}
+
+const REQUEST_TIMEOUT = 30_000 // 30 seconds
+
 async function callOpenRouter(apiKey, model, imageBase64) {
   try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
@@ -138,6 +159,8 @@ async function callOpenRouter(apiKey, model, imageBase64) {
         temperature: 0.1, // Low temperature for structured extraction
       }),
     })
+
+    clearTimeout(timeout)
 
     if (response.status === 429) {
       return { error: 'Rate limited — try again in a moment', status: 429 }
@@ -171,6 +194,10 @@ async function callOpenRouter(apiKey, model, imageBase64) {
 
     return { data: parsed }
   } catch (err) {
+    if (err.name === 'AbortError') {
+      console.error(`OpenRouter timeout (${model}): exceeded ${REQUEST_TIMEOUT / 1000}s`)
+      return { error: 'Request timed out', fallback: true }
+    }
     if (err instanceof SyntaxError) {
       console.error(`JSON parse failed (${model}):`, err.message)
       return { error: 'Could not parse model response', fallback: true }
