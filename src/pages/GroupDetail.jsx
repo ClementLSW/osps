@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useBalances } from '@/hooks/useBalances'
 import { formatCurrency, formatBalance } from '@/lib/formatCurrency'
+import { formatRelativeDate } from '@/lib/formatDate'
 import InviteModal from '@/components/groups/InviteModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import toast from 'react-hot-toast'
 
 export default function GroupDetail() {
   const { groupId } = useParams()
+  const navigate = useNavigate()
   const { profile } = useAuth()
   const [group, setGroup] = useState(null)
   const [members, setMembers] = useState([])
@@ -17,6 +20,8 @@ export default function GroupDetail() {
   const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
   const [settlingIndex, setSettlingIndex] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const { transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
@@ -82,6 +87,27 @@ export default function GroupDetail() {
       setSettlingIndex(null)
       loadGroup()
     }
+  }
+
+  async function deleteExpense(expenseId) {
+    const { error } = await getSupabase()
+      .from('expenses')
+      .delete()
+      .eq('id', expenseId)
+
+    if (error) {
+      toast.error('Failed to delete expense')
+      console.error(error)
+    } else {
+      toast.success('Expense deleted')
+      setDeleteTarget(null)
+      setExpandedId(null)
+      loadGroup()
+    }
+  }
+
+  function getMemberName(userId) {
+    return members.find(m => m.id === userId)?.display_name || 'Unknown'
   }
 
   if (loading) {
@@ -201,19 +227,83 @@ export default function GroupDetail() {
         </div>
       ) : (
         <div className="space-y-2">
-          {expenses.map(expense => (
-            <div key={expense.id} className="card flex items-center justify-between py-3">
-              <div>
-                <p className="font-medium text-sm">{expense.title}</p>
-                <p className="text-xs text-osps-gray mt-0.5">
-                  Paid by {expense.payer?.display_name} · {expense.split_mode}
-                </p>
+          {expenses.map(expense => {
+            const isExpanded = expandedId === expense.id
+            const canManage = expense.created_by === profile?.id
+
+            return (
+              <div
+                key={expense.id}
+                className="card overflow-hidden transition-all duration-200"
+              >
+                {/* Summary row — always visible, tappable */}
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : expense.id)}
+                  className="w-full flex items-center justify-between py-3 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm truncate">{expense.title}</p>
+                    <p className="text-xs text-osps-gray mt-0.5">
+                      Paid by {expense.payer?.display_name} · {formatRelativeDate(expense.expense_date)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 shrink-0">
+                    <span className="currency font-semibold">
+                      {formatCurrency(expense.total_amount, expense.currency)}
+                    </span>
+                    <span className={`text-osps-gray text-xs transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                      ▼
+                    </span>
+                  </div>
+                </button>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div className="border-t border-osps-gray-light pt-3 pb-1 animate-fadeIn">
+                    {/* Split breakdown */}
+                    <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider mb-2">
+                      Split ({expense.split_mode})
+                    </p>
+                    <div className="space-y-1 mb-3">
+                      {expense.splits?.map(split => (
+                        <div key={split.user_id} className="flex justify-between text-sm">
+                          <span className="text-osps-gray">{getMemberName(split.user_id)}</span>
+                          <span className="currency">{formatCurrency(split.owed_amount, expense.currency)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Notes */}
+                    {expense.notes && (
+                      <p className="text-sm text-osps-gray italic mb-3">
+                        "{expense.notes}"
+                      </p>
+                    )}
+
+                    {/* Edit / Delete — only for creator */}
+                    {canManage && (
+                      <div className="flex gap-2 pt-2 border-t border-osps-gray-light">
+                        <button
+                          onClick={() => navigate(`/group/${groupId}/add?edit=${expense.id}`)}
+                          className="flex-1 text-xs font-display font-semibold text-osps-black py-2 rounded-lg
+                                     hover:bg-osps-black/5 active:scale-[0.98] transition-all"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(expense)}
+                          className="flex-1 text-xs font-display font-semibold text-osps-red py-2 rounded-lg
+                                     hover:bg-osps-red/5 active:scale-[0.98] transition-all"
+                        >
+                          🗑 Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <span className="currency font-semibold">
-                {formatCurrency(expense.total_amount, expense.currency)}
-              </span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -233,6 +323,26 @@ export default function GroupDetail() {
       {showInvite && (
         <InviteModal group={group} onClose={() => setShowInvite(false)} onMemberAdded={loadGroup} />
       )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete expense?"
+          message={`"${deleteTarget.title}" (${formatCurrency(deleteTarget.total_amount, deleteTarget.currency)}) will be permanently deleted and all splits removed.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => deleteExpense(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+      `}</style>
     </div>
   )
 }
