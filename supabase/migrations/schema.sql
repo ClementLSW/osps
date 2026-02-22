@@ -1,5 +1,12 @@
--- O$P$ Initial Schema
--- Run this in Supabase SQL Editor or via CLI: supabase db push
+-- O$P$ — Complete Database Schema
+-- Run this in Supabase SQL Editor for a fresh setup.
+--
+-- Consolidates all migrations:
+--   001 — Core tables, RLS, triggers
+--   002 — Group types + expense confirmation
+--   003 — Pending invites
+--   004 — User lookup by email (for smart invites)
+--   005 — Group delete policy
 
 -- ══════════════════════════════════════════════════════════
 -- TABLES
@@ -21,6 +28,10 @@ create table public.groups (
   created_by   uuid not null references public.profiles(id),
   invite_code  text unique not null default encode(gen_random_bytes(6), 'hex'),
   is_settled   boolean default false,
+  type         text not null default 'ongoing' check (type in ('ongoing', 'trip', 'event')),
+  category     text,
+  start_date   date,
+  end_date     date,
   created_at   timestamptz default now()
 );
 
@@ -33,20 +44,22 @@ create table public.group_members (
 );
 
 create table public.expenses (
-  id           uuid primary key default gen_random_uuid(),
-  group_id     uuid not null references public.groups(id) on delete cascade,
-  paid_by      uuid not null references public.profiles(id),
-  title        text not null,
-  total_amount numeric(12,2) not null check (total_amount > 0),
-  currency     text not null default 'SGD',
-  split_mode   text not null check (split_mode in (
-                 'equal', 'exact', 'percentage', 'shares', 'line_item'
-               )),
-  receipt_url  text,
-  notes        text,
-  expense_date date not null default current_date,
-  created_at   timestamptz default now(),
-  created_by   uuid not null references public.profiles(id)
+  id            uuid primary key default gen_random_uuid(),
+  group_id      uuid not null references public.groups(id) on delete cascade,
+  paid_by       uuid not null references public.profiles(id),
+  title         text not null,
+  total_amount  numeric(12,2) not null check (total_amount > 0),
+  currency      text not null default 'SGD',
+  split_mode    text not null check (split_mode in (
+                  'equal', 'exact', 'percentage', 'shares', 'line_item'
+                )),
+  receipt_url   text,
+  notes         text,
+  expense_date  date not null default current_date,
+  confirmed_at  timestamptz,
+  confirmed_by  uuid references public.profiles(id),
+  created_at    timestamptz default now(),
+  created_by    uuid not null references public.profiles(id)
 );
 
 create table public.expense_splits (
@@ -83,6 +96,14 @@ create table public.settlements (
   note       text
 );
 
+create table public.pending_invites (
+  id         uuid primary key default gen_random_uuid(),
+  email      text not null,
+  group_id   uuid not null references public.groups(id) on delete cascade,
+  invited_by uuid not null references public.profiles(id),
+  created_at timestamptz default now()
+);
+
 -- ══════════════════════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════════════════════
@@ -94,6 +115,7 @@ create index idx_expense_splits_expense on public.expense_splits(expense_id);
 create index idx_expense_splits_user   on public.expense_splits(user_id);
 create index idx_line_items_expense    on public.line_items(expense_id);
 create index idx_settlements_group     on public.settlements(group_id);
+create index idx_pending_invites_email on public.pending_invites(email);
 
 -- ══════════════════════════════════════════════════════════
 -- ROW LEVEL SECURITY
@@ -107,15 +129,17 @@ alter table public.expense_splits enable row level security;
 alter table public.line_items enable row level security;
 alter table public.line_item_assignments enable row level security;
 alter table public.settlements enable row level security;
+alter table public.pending_invites enable row level security;
 
 -- Helper: check if current user is a member of a group
 create or replace function public.is_group_member(gid uuid)
 returns boolean as $$
   select exists(
     select 1 from public.group_members
-    where group_id = gid and user_id = auth.uid()
+    where group_id = gid and user_id = (select auth.uid())
   );
-$$ language sql security definer stable;
+$$ language sql security definer stable
+set search_path = '';
 
 -- ── Profiles ────────────────────────────────────────────
 
@@ -125,34 +149,37 @@ create policy "Users can view any profile"
 
 create policy "Users can update their own profile"
   on public.profiles for update
-  using (id = auth.uid());
+  using (id = (select auth.uid()));
 
 create policy "Users can insert their own profile"
   on public.profiles for insert
-  with check (id = auth.uid());
+  with check (id = (select auth.uid()));
 
 -- ── Groups ──────────────────────────────────────────────
 
-create policy "Members can view their groups"
-  on public.groups for select
-  using (public.is_group_member(id));
-
--- Allow anyone to look up a group by invite code (for joining)
 create policy "Anyone can view group by invite code"
   on public.groups for select
   using (true);
-  -- Note: in production, tighten this to only expose id + name for non-members
 
 create policy "Authenticated users can create groups"
   on public.groups for insert
-  with check (auth.uid() = created_by);
+  with check ((select auth.uid()) = created_by);
 
 create policy "Admins can update their groups"
   on public.groups for update
   using (
     id in (
       select group_id from public.group_members
-      where user_id = auth.uid() and role = 'admin'
+      where user_id = (select auth.uid()) and role = 'admin'
+    )
+  );
+
+create policy "Admins can delete their groups"
+  on public.groups for delete
+  using (
+    id in (
+      select group_id from public.group_members
+      where user_id = (select auth.uid()) and role = 'admin'
     )
   );
 
@@ -164,16 +191,15 @@ create policy "Members can view group members"
 
 create policy "Users can join groups"
   on public.group_members for insert
-  with check (user_id = auth.uid());
+  with check (user_id = (select auth.uid()));
 
 create policy "Admins can remove members"
   on public.group_members for delete
   using (
-    -- Admin removing someone, or user leaving
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     or group_id in (
       select group_id from public.group_members
-      where user_id = auth.uid() and role = 'admin'
+      where user_id = (select auth.uid()) and role = 'admin'
     )
   );
 
@@ -185,25 +211,25 @@ create policy "Members can view group expenses"
 
 create policy "Members can create expenses"
   on public.expenses for insert
-  with check (public.is_group_member(group_id) and created_by = auth.uid());
+  with check (public.is_group_member(group_id) and created_by = (select auth.uid()));
 
 create policy "Creator or admin can update expenses"
   on public.expenses for update
   using (
-    created_by = auth.uid()
+    created_by = (select auth.uid())
     or group_id in (
       select group_id from public.group_members
-      where user_id = auth.uid() and role = 'admin'
+      where user_id = (select auth.uid()) and role = 'admin'
     )
   );
 
 create policy "Creator or admin can delete expenses"
   on public.expenses for delete
   using (
-    created_by = auth.uid()
+    created_by = (select auth.uid())
     or group_id in (
       select group_id from public.group_members
-      where user_id = auth.uid() and role = 'admin'
+      where user_id = (select auth.uid()) and role = 'admin'
     )
   );
 
@@ -230,7 +256,7 @@ create policy "Members can delete splits"
   using (
     expense_id in (
       select id from public.expenses
-      where created_by = auth.uid() or public.is_group_member(group_id)
+      where created_by = (select auth.uid()) or public.is_group_member(group_id)
     )
   );
 
@@ -249,6 +275,15 @@ create policy "Members can create line items"
   with check (
     expense_id in (
       select id from public.expenses where public.is_group_member(group_id)
+    )
+  );
+
+create policy "Members can delete line items"
+  on public.line_items for delete
+  using (
+    expense_id in (
+      select id from public.expenses
+      where created_by = (select auth.uid()) or public.is_group_member(group_id)
     )
   );
 
@@ -282,25 +317,51 @@ create policy "Members can view settlements"
 
 create policy "Members can create settlements"
   on public.settlements for insert
-  with check (public.is_group_member(group_id) and paid_by = auth.uid());
+  with check (public.is_group_member(group_id) and paid_by = (select auth.uid()));
+
+-- ── Pending Invites ─────────────────────────────────────
+-- Accessed only via service role key from Netlify Functions.
+-- No client-side RLS policies needed — block all direct access.
+
+create policy "No direct access to pending invites"
+  on public.pending_invites for select
+  using (false);
 
 -- ══════════════════════════════════════════════════════════
--- AUTO-CREATE PROFILE ON SIGNUP
+-- FUNCTIONS
 -- ══════════════════════════════════════════════════════════
 
+-- Auto-create profile when a user signs up
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
   insert into public.profiles (id, display_name, avatar_url)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'display_name', new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    coalesce(
+      new.raw_user_meta_data->>'display_name',
+      new.raw_user_meta_data->>'full_name',
+      split_part(new.email, '@', 1)
+    ),
     new.raw_user_meta_data->>'avatar_url'
   );
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer
+set search_path = '';
 
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Look up a user's ID by email (used by smart invite flow).
+-- Security definer allows reading auth.users from the service role.
+create or replace function public.get_user_id_by_email(lookup_email text)
+returns uuid
+language sql
+security definer
+set search_path = ''
+stable
+as $$
+  select id from auth.users where email = lower(lookup_email) limit 1;
+$$;
