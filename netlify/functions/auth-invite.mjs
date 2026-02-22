@@ -9,7 +9,7 @@
  *             When they sign up and log in, the app auto-joins them.
  *
  * Uses the SERVICE_ROLE_KEY to:
- *   - Query auth.users by email (admin-only)
+ *   - Call get_user_id_by_email RPC (security definer, reads auth.users)
  *   - Insert into group_members for existing users
  *   - Call Supabase's /auth/v1/invite for new users
  */
@@ -47,20 +47,11 @@ export default async (request) => {
     const normalizedEmail = email.trim().toLowerCase()
 
     // ── Step 1: Check if user already exists ──
-    const userLookup = await fetch(
-      `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=1`,
-      {
-        method: 'GET',
-        headers: {
-          apikey: serviceRoleKey,
-          Authorization: `Bearer ${serviceRoleKey}`,
-        },
-      }
-    )
+    // Uses the get_user_id_by_email RPC (security definer function
+    // that queries auth.users — see migration 004)
+    let existingUserId = null
 
-    // Use the admin user list to find by email
-    // (There's no direct "get user by email" endpoint, so we use the filter approach)
-    const adminQuery = await fetch(
+    const rpcResponse = await fetch(
       `${supabaseUrl}/rest/v1/rpc/get_user_id_by_email`,
       {
         method: 'POST',
@@ -73,33 +64,16 @@ export default async (request) => {
       }
     )
 
-    // If the RPC doesn't exist yet, fall back to the admin users API
-    let existingUserId = null
-
-    if (adminQuery.ok) {
-      const result = await adminQuery.json()
-      existingUserId = result
-    }
-
-    // Fallback: query auth.users directly via PostgREST with service role
-    if (!existingUserId) {
-      const directLookup = await fetch(
-        `${supabaseUrl}/rest/v1/profiles?select=id&email=eq.${encodeURIComponent(normalizedEmail)}`,
-        {
-          headers: {
-            apikey: serviceRoleKey,
-            Authorization: `Bearer ${serviceRoleKey}`,
-            Accept: 'application/json',
-          },
-        }
-      )
-
-      if (directLookup.ok) {
-        const profiles = await directLookup.json()
-        if (profiles.length > 0) {
-          existingUserId = profiles[0].id
-        }
+    if (rpcResponse.ok) {
+      const result = await rpcResponse.json()
+      // RPC returns a UUID string if found, null if not
+      if (result && typeof result === 'string' && result.length > 0) {
+        existingUserId = result
       }
+    } else {
+      // RPC failed — log but don't block the invite flow
+      const errText = await rpcResponse.text()
+      console.error('User lookup RPC failed:', rpcResponse.status, errText)
     }
 
     if (existingUserId) {
