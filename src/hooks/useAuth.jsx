@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { getSession, loginWithGoogle, logout } from '@/lib/api'
+import { setAccessToken } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
 
 const AuthContext = createContext(null)
@@ -13,79 +15,39 @@ export function AuthProvider({ children }) {
 
     async function init() {
       try {
-        // First check if there's an auth code in the URL (OAuth redirect)
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const queryParams = new URLSearchParams(window.location.search)
-        const hasAuthParams = hashParams.has('access_token') || queryParams.has('code')
+        // Step 1: Ask our server for the current session
+        const { user: sessionUser, accessToken } = await getSession()
 
-        if (hasAuthParams) {
-          // Let Supabase handle the OAuth exchange
-          const { data: { session }, error } = await supabase.auth.getSession()
-          if (!mounted) return
-          if (error) {
-            console.error('OAuth exchange error:', error)
-            // Clean URL params
-            window.history.replaceState({}, '', window.location.pathname)
-            setLoading(false)
-            return
-          }
-          if (session?.user) {
-            setUser(session.user)
-            await fetchProfile(session.user.id)
-            window.history.replaceState({}, '', window.location.pathname)
-            return
-          }
-        }
-
-        // Normal session check
-        const { data: { session }, error } = await supabase.auth.getSession()
         if (!mounted) return
-        if (error) {
-          console.error('getSession error:', error)
-          setLoading(false)
-          return
-        }
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await fetchProfile(session.user.id)
+
+        if (sessionUser && accessToken) {
+          // Step 2: Set the access token on the Supabase client
+          // so DB queries work with RLS
+          await setAccessToken(accessToken)
+
+          setUser(sessionUser)
+
+          // Step 3: Fetch the full profile from Supabase
+          // (the session only has basic info from the OAuth provider)
+          await fetchProfile(sessionUser.id)
         } else {
+          setUser(null)
+          setProfile(null)
           setLoading(false)
         }
       } catch (err) {
-        console.error('Auth init failed:', err)
-        if (mounted) setLoading(false)
+        console.error('Auth init error:', err)
+        if (mounted) {
+          setUser(null)
+          setProfile(null)
+          setLoading(false)
+        }
       }
     }
 
     init()
 
-    // Listen for auth changes (sign in, sign out, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return
-
-        if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-          return
-        }
-
-        if (session?.user) {
-          setUser(session.user)
-          await fetchProfile(session.user.id)
-        } else {
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-        }
-      }
-    )
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
+    return () => { mounted = false }
   }, [])
 
   async function fetchProfile(userId) {
@@ -108,39 +70,21 @@ export function AuthProvider({ children }) {
   }
 
   async function signInWithGoogle() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
-    })
-    if (error) throw error
-  }
-
-  async function signInWithEmail(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (error) throw error
-  }
-
-  async function signUpWithEmail(email, password, displayName) {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName },
-      },
-    })
-    if (error) throw error
+    loginWithGoogle()
   }
 
   async function signOut() {
-    // Clear local storage before signing out to prevent stale tokens
-    localStorage.removeItem('osps-auth')
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    await logout()
+  }
+
+  // Email auth is not covered by server-side OAuth — would need
+  // additional Netlify Functions. Left as a TODO for now.
+  async function signInWithEmail(email, password) {
+    throw new Error('Email auth not yet implemented with server-side flow')
+  }
+
+  async function signUpWithEmail(email, password, displayName) {
+    throw new Error('Email auth not yet implemented with server-side flow')
   }
 
   const value = {
