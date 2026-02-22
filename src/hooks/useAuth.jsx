@@ -35,8 +35,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { auth } from '@/lib/api'
-import { setAccessToken } from '@/lib/supabase'
-import { supabase } from '@/lib/supabase'
+import { setAccessToken, getSupabase } from '@/lib/supabase'
 
 const AuthContext = createContext(null)
 
@@ -87,7 +86,7 @@ export function AuthProvider({ children }) {
 
   async function fetchProfile(userId) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('profiles')
         .select('*')
         .eq('id', userId)

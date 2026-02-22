@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -23,7 +23,7 @@ export default function Dashboard() {
   }, [])
 
   async function fetchGroups() {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('group_members')
       .select(`
         group_id,

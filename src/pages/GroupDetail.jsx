@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useBalances } from '@/hooks/useBalances'
 import { formatCurrency, formatBalance } from '@/lib/formatCurrency'
@@ -25,20 +25,20 @@ export default function GroupDetail() {
     setLoading(true)
 
     // Fetch group info
-    const { data: groupData } = await supabase
+    const { data: groupData } = await getSupabase()
       .from('groups')
       .select('*')
       .eq('id', groupId)
       .single()
 
     // Fetch members with profiles
-    const { data: memberData } = await supabase
+    const { data: memberData } = await getSupabase()
       .from('group_members')
       .select('user_id, role, profiles:user_id (id, display_name, avatar_url)')
       .eq('group_id', groupId)
 
     // Fetch expenses with splits
-    const { data: expenseData } = await supabase
+    const { data: expenseData } = await getSupabase()
       .from('expenses')
       .select(`
         *,
@@ -49,7 +49,7 @@ export default function GroupDetail() {
       .order('expense_date', { ascending: false })
 
     // Fetch settlements
-    const { data: settlementData } = await supabase
+    const { data: settlementData } = await getSupabase()
       .from('settlements')
       .select('*')
       .eq('group_id', groupId)

@@ -1,26 +1,14 @@
 /**
- * Supabase client — now WITHOUT client-side auth.
+ * Supabase client — WITHOUT client-side auth.
  *
- * Previously, Supabase handled the entire auth flow client-side
- * (OAuth redirects, token storage in localStorage, auto-refresh).
- *
- * Now, auth is handled by our Netlify Functions. The Supabase client
+ * Auth is handled by our Netlify Functions. The Supabase client
  * is only used for DATABASE QUERIES — using an access token provided
  * by our server via the /api/auth/session endpoint.
  *
- * ARCHITECTURE CHANGE:
- *
- *   Before (implicit flow):
- *     Browser ←→ Supabase Auth (tokens in localStorage)
- *     Browser ←→ Supabase DB (using localStorage token)
- *
- *   After (server-side PKCE):
- *     Browser ←→ Our Server ←→ Supabase Auth (tokens in httpOnly cookie)
- *     Browser ←→ Supabase DB (using in-memory access token from server)
- *
- * The key difference: createClient() below has auth DISABLED.
- * We manually set the access token via supabase.auth.setSession()
- * or by using createAuthenticatedClient() with a token.
+ * KEY INSIGHT:
+ * supabase.auth.setSession() doesn't work reliably when auth is disabled.
+ * Instead, we create a NEW client with the token baked into the global
+ * Authorization header. This guarantees every request carries the JWT.
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -34,14 +22,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
-/**
- * Default Supabase client — NO auto auth.
- *
- * persistSession: false → Don't save tokens to localStorage
- * autoRefreshToken: false → Our server handles refresh
- * detectSessionInUrl: false → We handle OAuth redirects server-side
- */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Default client — unauthenticated (anon key only)
+let supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
@@ -50,23 +32,44 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 })
 
 /**
- * Set the access token on the default client.
+ * Replace the Supabase client with one that carries the user's JWT.
  *
- * Called by useAuth after fetching the session from our server.
- * This makes all subsequent Supabase queries (selects, inserts, etc.)
- * use this token — which means RLS policies see the correct user.
+ * How Supabase auth works at the HTTP level:
+ *   - apikey header: always the anon key (identifies your project)
+ *   - Authorization header: the user's JWT (identifies the user for RLS)
  *
- * @param {string} accessToken - JWT from /api/auth/session
+ * When both headers are present, Postgres uses the JWT to resolve
+ * auth.uid() in RLS policies. Without the Authorization header,
+ * auth.uid() returns null and all RLS policies fail.
+ *
+ * We set the JWT via global.headers so it's included in every request
+ * automatically — no per-query configuration needed.
  */
-export async function setAccessToken(accessToken) {
+export function setAccessToken(accessToken) {
   if (!accessToken) return
 
-  // setSession requires both tokens but we only have the access token
-  // (refresh token is safe in the httpOnly cookie on the server)
-  // We pass an empty refresh token — it won't be used since
-  // autoRefreshToken is disabled
-  await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
+  supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
   })
 }
+
+/**
+ * Get the current Supabase client.
+ * Use this instead of importing supabase directly, since the
+ * client reference changes when setAccessToken() is called.
+ */
+export function getSupabase() {
+  return supabase
+}
+
+// Also export as default for backward compatibility
+export { supabase }

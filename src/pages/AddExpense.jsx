@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { splitEqual, splitExact, splitPercentage, splitShares, splitLineItems } from '@/lib/splitCalculators'
 import { formatCurrency } from '@/lib/formatCurrency'
@@ -41,10 +41,10 @@ export default function AddExpense() {
   }, [groupId])
 
   async function loadGroupData() {
-    const { data: groupData } = await supabase
+    const { data: groupData } = await getSupabase()
       .from('groups').select('*').eq('id', groupId).single()
 
-    const { data: memberData } = await supabase
+    const { data: memberData } = await getSupabase()
       .from('group_members')
       .select('user_id, profiles:user_id (id, display_name)')
       .eq('group_id', groupId)
@@ -137,7 +137,7 @@ export default function AddExpense() {
     setSaving(true)
 
     // Insert expense
-    const { data: expense, error: expError } = await supabase
+    const { data: expense, error: expError } = await getSupabase()
       .from('expenses')
       .insert({
         group_id: groupId,
@@ -159,7 +159,7 @@ export default function AddExpense() {
     }
 
     // Insert splits
-    const { error: splitError } = await supabase
+    const { error: splitError } = await getSupabase()
       .from('expense_splits')
       .insert(splits.map(s => ({
         expense_id: expense.id,
@@ -177,7 +177,7 @@ export default function AddExpense() {
     // If line items, save those too
     if (splitMode === 'line_item') {
       for (const item of lineItems.filter(i => i.name && parseFloat(i.amount) > 0)) {
-        const { data: li } = await supabase
+        const { data: li } = await getSupabase()
           .from('line_items')
           .insert({ expense_id: expense.id, name: item.name, amount: parseFloat(item.amount) })
           .select()
@@ -188,7 +188,7 @@ export default function AddExpense() {
             .filter(([_, v]) => v)
             .map(([userId]) => ({ line_item_id: li.id, user_id: userId, share_count: 1 }))
           if (assignments.length) {
-            await supabase.from('line_item_assignments').insert(assignments)
+            await getSupabase().from('line_item_assignments').insert(assignments)
           }
         }
       }

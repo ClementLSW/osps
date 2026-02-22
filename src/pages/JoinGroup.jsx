@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -13,7 +13,7 @@ export default function JoinGroup() {
 
   useEffect(() => {
     // Look up group name for the invite code
-    supabase
+    getSupabase()
       .from('groups')
       .select('id, name')
       .eq('invite_code', inviteCode)
@@ -34,7 +34,7 @@ export default function JoinGroup() {
     setJoining(true)
 
     // Find group by invite code
-    const { data: group, error: groupError } = await supabase
+    const { data: group, error: groupError } = await getSupabase()
       .from('groups')
       .select('id')
       .eq('invite_code', inviteCode)
@@ -47,7 +47,7 @@ export default function JoinGroup() {
     }
 
     // Check if already a member
-    const { data: existing } = await supabase
+    const { data: existing } = await getSupabase()
       .from('group_members')
       .select('group_id')
       .eq('group_id', group.id)
@@ -61,7 +61,7 @@ export default function JoinGroup() {
     }
 
     // Join the group
-    const { error: joinError } = await supabase
+    const { error: joinError } = await getSupabase()
       .from('group_members')
       .insert({ group_id: group.id, user_id: profile.id, role: 'member' })
 

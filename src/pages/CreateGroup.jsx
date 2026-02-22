@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -52,7 +52,7 @@ export default function CreateGroup() {
     if (!name.trim() || !preset) return
     setCreating(true)
 
-    const { data: group, error } = await supabase
+    const { data: group, error } = await getSupabase()
       .from('groups')
       .insert({
         name: name.trim(),
@@ -74,7 +74,7 @@ export default function CreateGroup() {
     }
 
     // Add creator as admin
-    const { error: memberError } = await supabase
+    const { error: memberError } = await getSupabase()
       .from('group_members')
       .insert({
         group_id: group.id,
