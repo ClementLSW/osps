@@ -16,6 +16,7 @@ export default function GroupDetail() {
   const [settlements, setSettlements] = useState([])
   const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
+  const [settlingIndex, setSettlingIndex] = useState(null)
 
   const { transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
@@ -61,6 +62,26 @@ export default function GroupDetail() {
     setExpenses(expenseData || [])
     setSettlements(settlementData || [])
     setLoading(false)
+  }
+
+  async function recordSettlement(transaction) {
+    const { error } = await getSupabase()
+      .from('settlements')
+      .insert({
+        group_id: groupId,
+        paid_by: transaction.from,
+        paid_to: transaction.to,
+        amount: transaction.amount,
+      })
+
+    if (error) {
+      toast.error('Failed to record payment')
+      console.error(error)
+    } else {
+      toast.success('Payment recorded!')
+      setSettlingIndex(null)
+      loadGroup()
+    }
   }
 
   if (loading) {
@@ -127,6 +148,7 @@ export default function GroupDetail() {
             {transactions.map((t, i) => {
               const fromName = members.find(m => m.id === t.from)?.display_name || 'Unknown'
               const toName = members.find(m => m.id === t.to)?.display_name || 'Unknown'
+              const isConfirming = settlingIndex === i
               return (
                 <div key={i} className="card flex items-center justify-between py-3">
                   <span className="text-sm">
@@ -134,9 +156,28 @@ export default function GroupDetail() {
                     <span className="text-osps-gray"> pays </span>
                     <span className="font-medium">{toName}</span>
                   </span>
-                  <span className="currency text-osps-red font-semibold">
-                    {formatCurrency(t.amount, group.currency)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="currency text-osps-red font-semibold">
+                      {formatCurrency(t.amount, group.currency)}
+                    </span>
+                    {isConfirming ? (
+                      <button
+                        onClick={() => recordSettlement(t)}
+                        className="text-xs font-display font-semibold bg-osps-green text-white px-3 py-1.5 rounded-lg
+                                   hover:bg-osps-green/90 active:scale-[0.97] transition-all"
+                      >
+                        Confirm
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setSettlingIndex(i)}
+                        className="text-xs font-display font-semibold text-osps-green border border-osps-green/30 px-3 py-1.5 rounded-lg
+                                   hover:bg-osps-green/5 active:scale-[0.97] transition-all"
+                      >
+                        Paid
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
