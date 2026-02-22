@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useScrollLock } from '@/hooks/useScrollLock'
 import ConfirmDialog from '@/components/ConfirmDialog'
 
 const CURRENCIES = [
@@ -24,6 +25,7 @@ const CURRENCIES = [
  *   onClose     — close the panel
  */
 export default function GroupSettingsPanel({ group, isAdmin, onUpdate, onDelete, onLeave, onClose }) {
+  useScrollLock()
   const [name, setName] = useState(group.name)
   const [currency, setCurrency] = useState(group.currency)
   const [showCurrency, setShowCurrency] = useState(false)

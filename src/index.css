@@ -10,6 +10,15 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-semibold;
   }
+
+  /* Prevent iOS Safari from zooming in on input focus.
+     iOS zooms when an input's computed font-size is < 16px.
+     This forces all form elements to 16px minimum on mobile. */
+  @media screen and (max-width: 768px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
 @layer components {
@@ -42,4 +51,16 @@
   .currency {
     @apply font-mono font-medium tabular-nums;
   }
+}
+
+@layer utilities {
+  /* iOS safe area bottom padding — use on pages with bottom actions */
+  .pb-safe {
+    padding-bottom: max(2rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Body scroll lock when modals are open */
+body.modal-open {
+  overflow: hidden;
 }

@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useScrollLock } from '@/hooks/useScrollLock'
 import toast from 'react-hot-toast'
 
 export default function InviteModal({ group, onClose, onMemberAdded }) {
+  useScrollLock()
   const { profile } = useAuth()
   const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)

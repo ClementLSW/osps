@@ -395,7 +395,7 @@ export default function AddExpense() {
   const preview = computeSplits()
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8">
+    <div className="max-w-lg mx-auto px-4 py-8 pb-safe">
       <button onClick={() => navigate(-1)} className="text-sm text-osps-gray hover:text-osps-black mb-4">
         ← Back
       </button>
@@ -559,13 +559,13 @@ export default function AddExpense() {
                     <button
                       type="button"
                       onClick={() => setShares({ ...shares, [id]: Math.max(0, (shares[id] || 1) - 1) })}
-                      className="w-8 h-8 rounded-lg bg-osps-gray-light text-osps-black font-bold"
+                      className="w-10 h-10 rounded-lg bg-osps-gray-light text-osps-black font-bold"
                     >-</button>
                     <span className="w-8 text-center font-mono">{shares[id] || 1}</span>
                     <button
                       type="button"
                       onClick={() => setShares({ ...shares, [id]: (shares[id] || 1) + 1 })}
-                      className="w-8 h-8 rounded-lg bg-osps-gray-light text-osps-black font-bold"
+                      className="w-10 h-10 rounded-lg bg-osps-gray-light text-osps-black font-bold"
                     >+</button>
                   </div>
                 </div>
@@ -606,7 +606,7 @@ export default function AddExpense() {
                     />
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {members.map(m => (
                     <button
                       key={m.id}
@@ -619,7 +619,7 @@ export default function AddExpense() {
                         }
                         setLineItems(updated)
                       }}
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium transition-all ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                         item.assignments[m.id]
                           ? 'bg-osps-black text-white'
                           : 'bg-osps-gray-light/50 text-osps-gray'

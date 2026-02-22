@@ -1,3 +1,5 @@
+import { useScrollLock } from '@/hooks/useScrollLock'
+
 /**
  * ConfirmDialog — reusable modal for destructive actions.
  *
@@ -18,6 +20,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
+  useScrollLock()
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div

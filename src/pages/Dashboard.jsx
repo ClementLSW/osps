@@ -48,7 +48,7 @@ export default function Dashboard() {
   const settledGroups = groups.filter(g => g.is_settled)
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-8">
+    <div className="max-w-lg mx-auto px-4 py-8 pb-safe">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
