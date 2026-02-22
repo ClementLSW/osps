@@ -4,6 +4,7 @@ import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useBalances } from '@/hooks/useBalances'
 import { formatCurrency, formatBalance } from '@/lib/formatCurrency'
+import InviteModal from '@/components/groups/InviteModal'
 import toast from 'react-hot-toast'
 
 export default function GroupDetail() {
@@ -14,6 +15,7 @@ export default function GroupDetail() {
   const [expenses, setExpenses] = useState([])
   const [settlements, setSettlements] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showInvite, setShowInvite] = useState(false)
 
   const { transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
@@ -61,12 +63,6 @@ export default function GroupDetail() {
     setLoading(false)
   }
 
-  function copyInviteLink() {
-    const link = `${window.location.origin}/join/${group.invite_code}`
-    navigator.clipboard.writeText(link)
-    toast.success('Invite link copied!')
-  }
-
   if (loading) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8">
@@ -103,8 +99,8 @@ export default function GroupDetail() {
           </Link>
           <h1 className="text-2xl font-display font-bold mt-1">{group.name}</h1>
         </div>
-        <button onClick={copyInviteLink} className="btn-ghost text-sm">
-          📋 Invite
+        <button onClick={() => setShowInvite(true)} className="btn-ghost text-sm">
+          👥 Invite
         </button>
       </div>
 
@@ -191,6 +187,11 @@ export default function GroupDetail() {
           </span>
         ))}
       </div>
+
+      {/* Invite modal */}
+      {showInvite && (
+        <InviteModal group={group} onClose={() => setShowInvite(false)} />
+      )}
     </div>
   )
 }
