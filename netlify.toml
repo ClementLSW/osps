@@ -3,7 +3,11 @@
   publish = "dist"
   functions = "netlify/functions"
 
-# API routes — MUST come before the SPA catch-all
+# ── API Routes ──────────────────────────────────────────────
+# Maps clean URLs to Netlify Functions
+# The browser calls /api/auth/login, Netlify routes it to
+# the auth-login.js function automatically.
+
 [[redirects]]
   from = "/api/auth/login"
   to = "/.netlify/functions/auth-login"
@@ -24,7 +28,22 @@
   to = "/.netlify/functions/auth-logout"
   status = 200
 
-# SPA routing — catch-all LAST
+[[redirects]]
+  from = "/api/auth/signup"
+  to = "/.netlify/functions/auth-signup"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/signin"
+  to = "/.netlify/functions/auth-signin"
+  status = 200
+
+[[redirects]]
+  from = "/api/db"
+  to = "/.netlify/functions/db-query"
+  status = 200
+
+# SPA routing — all other paths go to index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"

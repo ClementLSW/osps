@@ -1,5 +1,40 @@
+/**
+ * Auth hook — now powered by server-side auth.
+ *
+ * WHAT CHANGED:
+ *
+ *   Before: useAuth called supabase.auth.getSession() which read
+ *   tokens from localStorage, managed by Supabase's client SDK.
+ *
+ *   After: useAuth calls OUR /api/auth/session endpoint, which
+ *   reads the httpOnly cookie, validates/refreshes tokens server-side,
+ *   and returns the user info + a short-lived access token.
+ *
+ * THE FLOW:
+ *
+ *   1. Component mounts → useAuth runs
+ *   2. Fetch /api/auth/session (browser auto-includes httpOnly cookie)
+ *   3. Server validates cookie, returns { user, accessToken }
+ *   4. We call setAccessToken() so Supabase client can make DB queries
+ *   5. Component re-renders with user data
+ *
+ * SIGN IN:
+ *   - loginWithGoogle() redirects to /api/auth/login
+ *   - User goes through Google consent
+ *   - Server handles token exchange, sets cookie
+ *   - User arrives at /dashboard
+ *   - useAuth fires, fetches session, user is logged in
+ *
+ * SIGN OUT:
+ *   - logout() calls /api/auth/logout (clears cookie + revokes token)
+ *   - Redirects to /
+ *
+ * No tokens in localStorage. No tokens in JavaScript (except the
+ * short-lived access token in React state, which vanishes on page close).
+ */
+
 import { createContext, useContext, useEffect, useState } from 'react'
-import { getSession, loginWithGoogle, logout } from '@/lib/api'
+import { auth } from '@/lib/api'
 import { setAccessToken } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
 
@@ -16,7 +51,7 @@ export function AuthProvider({ children }) {
     async function init() {
       try {
         // Step 1: Ask our server for the current session
-        const { user: sessionUser, accessToken } = await getSession()
+        const { user: sessionUser, accessToken } = await auth.getSession()
 
         if (!mounted) return
 
@@ -70,21 +105,30 @@ export function AuthProvider({ children }) {
   }
 
   async function signInWithGoogle() {
-    loginWithGoogle()
+    auth.signInWithGoogle()
   }
 
   async function signOut() {
-    await logout()
+    await auth.signOut()
   }
 
-  // Email auth is not covered by server-side OAuth — would need
-  // additional Netlify Functions. Left as a TODO for now.
   async function signInWithEmail(email, password) {
-    throw new Error('Email auth not yet implemented with server-side flow')
+    const result = await auth.signInWithEmail(email, password)
+    if (result.success) {
+      // Reload to pick up the new session cookie
+      window.location.href = '/dashboard'
+    }
   }
 
   async function signUpWithEmail(email, password, displayName) {
-    throw new Error('Email auth not yet implemented with server-side flow')
+    const result = await auth.signUpWithEmail(email, password, displayName)
+    if (result.confirmationRequired) {
+      return { confirmationRequired: true, message: result.message }
+    }
+    if (result.success) {
+      window.location.href = '/dashboard'
+    }
+    return result
   }
 
   const value = {

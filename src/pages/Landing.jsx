@@ -1,19 +1,35 @@
-/**
- * Landing page — simplified for server-side OAuth.
- *
- * The "Continue with Google" button no longer calls supabase.auth.signInWithOAuth().
- * Instead, it navigates to /api/auth/login — our Netlify Function that starts
- * the PKCE flow server-side.
- *
- * Email/password auth is disabled for now since it would need its own
- * server-side endpoints. This could be added with /api/auth/signup and
- * /api/auth/signin functions that call Supabase's auth API server-side.
- */
-
+import { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import toast from 'react-hot-toast'
 
 export default function Landing() {
-  const { signInWithGoogle } = useAuth()
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth()
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      if (isSignUp) {
+        const result = await signUpWithEmail(email, password, displayName)
+        if (result?.confirmationRequired) {
+          toast.success(result.message)
+          setLoading(false)
+          return
+        }
+      } else {
+        await signInWithEmail(email, password)
+      }
+    } catch (err) {
+      toast.error(err.message)
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
@@ -28,7 +44,7 @@ export default function Landing() {
           </p>
         </div>
 
-        {/* Google OAuth — triggers server-side PKCE flow */}
+        {/* Google OAuth */}
         <button
           onClick={signInWithGoogle}
           className="w-full flex items-center justify-center gap-3 bg-white border border-osps-gray-light
@@ -43,9 +59,54 @@ export default function Landing() {
           Continue with Google
         </button>
 
-        <p className="text-center text-xs text-osps-gray mt-6 font-body leading-relaxed">
-          By signing in, you agree to our terms of service.<br />
-          Your auth session is secured server-side with encrypted cookies.
+        <div className="flex items-center gap-4 my-6">
+          <div className="flex-1 h-px bg-osps-gray-light" />
+          <span className="text-xs text-osps-gray uppercase tracking-wider">or</span>
+          <div className="flex-1 h-px bg-osps-gray-light" />
+        </div>
+
+        {/* Email/Password */}
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {isSignUp && (
+            <input
+              type="text"
+              placeholder="Display name"
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+              className="input"
+              required
+            />
+          )}
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            className="input"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            className="input"
+            required
+            minLength={6}
+          />
+          <button type="submit" className="btn-primary w-full" disabled={loading}>
+            {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
+          </button>
+        </form>
+
+        <p className="text-center text-sm text-osps-gray mt-4">
+          {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-osps-red font-medium hover:underline"
+          >
+            {isSignUp ? 'Sign in' : 'Sign up'}
+          </button>
         </p>
       </div>
     </div>
