@@ -100,7 +100,10 @@ export default function JoinGroup() {
           )}
           <p className="text-sm text-osps-gray mb-4">Sign in or create an account to join.</p>
           <button
-            onClick={() => navigate('/', { state: { returnTo: `/join/${inviteCode}` } })}
+            onClick={() => {
+              sessionStorage.setItem('osps-return-to', `/join/${inviteCode}`)
+              navigate('/')
+            }}
             className="btn-primary"
           >
             Sign in to join

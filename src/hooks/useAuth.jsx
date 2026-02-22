@@ -69,6 +69,14 @@ export function AuthProvider({ children }) {
           // Step 4: Claim any pending group invites for this email
           // Runs silently — if there are invites, user gets auto-added
           claimPendingInvites()
+
+          // Step 5: Check if there's a deferred redirect (e.g. invite link)
+          // This survives full page reloads and OAuth redirects
+          const returnTo = sessionStorage.getItem('osps-return-to')
+          if (returnTo) {
+            sessionStorage.removeItem('osps-return-to')
+            window.location.href = returnTo
+          }
         } else {
           setUser(null)
           setProfile(null)
