@@ -190,7 +190,7 @@ export default function GroupDetail() {
 
       {/* Invite modal */}
       {showInvite && (
-        <InviteModal group={group} onClose={() => setShowInvite(false)} />
+        <InviteModal group={group} onClose={() => setShowInvite(false)} onMemberAdded={loadGroup} />
       )}
     </div>
   )

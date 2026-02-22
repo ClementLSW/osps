@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 
-export default function InviteModal({ group, onClose }) {
+export default function InviteModal({ group, onClose, onMemberAdded }) {
   const { profile } = useAuth()
   const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)
@@ -39,6 +39,7 @@ export default function InviteModal({ group, onClose }) {
         toast(`${email} is already in this group`, { icon: 'ℹ️' })
       } else if (data.addedDirectly) {
         toast.success(`${email} has been added to the group!`)
+        onMemberAdded?.()
       } else if (data.inviteSent) {
         toast.success(`Invite sent to ${email}! They'll be auto-added when they sign up.`)
       }
