@@ -6,6 +6,7 @@ import { useBalances } from '@/hooks/useBalances'
 import { formatCurrency, formatBalance } from '@/lib/formatCurrency'
 import { formatRelativeDate } from '@/lib/formatDate'
 import InviteModal from '@/components/groups/InviteModal'
+import GroupSettingsPanel from '@/components/groups/GroupSettingsPanel'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import toast from 'react-hot-toast'
 
@@ -14,16 +15,21 @@ export default function GroupDetail() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [group, setGroup] = useState(null)
-  const [members, setMembers] = useState([])
+  const [members, setMembers] = useState([])     // [{ id, display_name, avatar_url, role }]
   const [expenses, setExpenses] = useState([])
   const [settlements, setSettlements] = useState([])
   const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [settlingIndex, setSettlingIndex] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const { transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
+
+  // Derive admin status from member data
+  const myRole = members.find(m => m.id === profile?.id)?.role
+  const isAdmin = myRole === 'admin'
 
   useEffect(() => {
     loadGroup()
@@ -39,7 +45,7 @@ export default function GroupDetail() {
       .eq('id', groupId)
       .single()
 
-    // Fetch members with profiles
+    // Fetch members with profiles — preserve role
     const { data: memberData } = await getSupabase()
       .from('group_members')
       .select('user_id, role, profiles:user_id (id, display_name, avatar_url)')
@@ -63,7 +69,8 @@ export default function GroupDetail() {
       .eq('group_id', groupId)
 
     setGroup(groupData)
-    setMembers(memberData?.map(m => m.profiles) || [])
+    // Merge role into profile object so we have { id, display_name, avatar_url, role }
+    setMembers(memberData?.map(m => ({ ...m.profiles, role: m.role })) || [])
     setExpenses(expenseData || [])
     setSettlements(settlementData || [])
     setLoading(false)
@@ -103,6 +110,54 @@ export default function GroupDetail() {
       setDeleteTarget(null)
       setExpandedId(null)
       loadGroup()
+    }
+  }
+
+  async function updateGroup(fields) {
+    const { error } = await getSupabase()
+      .from('groups')
+      .update(fields)
+      .eq('id', groupId)
+
+    if (error) {
+      toast.error('Failed to update group')
+      console.error(error)
+    } else {
+      toast.success('Group updated')
+      loadGroup()
+    }
+  }
+
+  async function deleteGroup() {
+    const { error } = await getSupabase()
+      .from('groups')
+      .delete()
+      .eq('id', groupId)
+
+    if (error) {
+      toast.error('Failed to delete group')
+      console.error(error)
+    } else {
+      toast.success('Group deleted')
+      setShowSettings(false)
+      navigate('/dashboard')
+    }
+  }
+
+  async function leaveGroup() {
+    const { error } = await getSupabase()
+      .from('group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('user_id', profile.id)
+
+    if (error) {
+      toast.error('Failed to leave group')
+      console.error(error)
+    } else {
+      toast.success('Left the group')
+      setShowSettings(false)
+      navigate('/dashboard')
     }
   }
 
@@ -146,10 +201,28 @@ export default function GroupDetail() {
           </Link>
           <h1 className="text-2xl font-display font-bold mt-1">{group.name}</h1>
         </div>
-        <button onClick={() => setShowInvite(true)} className="btn-ghost text-sm">
-          👥 Invite
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowInvite(true)} className="btn-ghost text-sm">
+            👥 Invite
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="btn-ghost text-sm px-3"
+            title="Group settings"
+          >
+            ⚙️
+          </button>
+        </div>
       </div>
+
+      {/* Settled banner */}
+      {group.is_settled && (
+        <div className="bg-osps-green/10 border border-osps-green/20 rounded-2xl px-4 py-3 mb-6 text-center">
+          <p className="text-sm font-display font-semibold text-osps-green">
+            ✓ This group is settled
+          </p>
+        </div>
+      )}
 
       {/* My balance */}
       <div className="card mb-6 text-center">
@@ -212,9 +285,11 @@ export default function GroupDetail() {
       )}
 
       {/* Add expense button */}
-      <Link to={`/group/${groupId}/add`} className="btn-primary w-full text-center block mb-6">
-        + Add Expense
-      </Link>
+      {!group.is_settled && (
+        <Link to={`/group/${groupId}/add`} className="btn-primary w-full text-center block mb-6">
+          + Add Expense
+        </Link>
+      )}
 
       {/* Expense list */}
       <h2 className="text-sm font-display font-semibold text-osps-gray uppercase tracking-wider mb-3">
@@ -229,7 +304,7 @@ export default function GroupDetail() {
         <div className="space-y-2">
           {expenses.map(expense => {
             const isExpanded = expandedId === expense.id
-            const canManage = expense.created_by === profile?.id
+            const canManage = expense.created_by === profile?.id || isAdmin
 
             return (
               <div
@@ -280,8 +355,8 @@ export default function GroupDetail() {
                       </p>
                     )}
 
-                    {/* Edit / Delete — only for creator */}
-                    {canManage && (
+                    {/* Edit / Delete — creator or admin */}
+                    {canManage && !group.is_settled && (
                       <div className="flex gap-2 pt-2 border-t border-osps-gray-light">
                         <button
                           onClick={() => navigate(`/group/${groupId}/add?edit=${expense.id}`)}
@@ -313,8 +388,11 @@ export default function GroupDetail() {
       </h2>
       <div className="flex flex-wrap gap-2">
         {members.map(m => (
-          <span key={m.id} className="bg-white border border-osps-gray-light rounded-full px-3 py-1 text-sm">
+          <span key={m.id} className="bg-white border border-osps-gray-light rounded-full px-3 py-1 text-sm flex items-center gap-1.5">
             {m.display_name}
+            {m.role === 'admin' && (
+              <span className="text-[10px] font-display font-semibold text-osps-yellow uppercase">admin</span>
+            )}
           </span>
         ))}
       </div>
@@ -324,7 +402,19 @@ export default function GroupDetail() {
         <InviteModal group={group} onClose={() => setShowInvite(false)} onMemberAdded={loadGroup} />
       )}
 
-      {/* Delete confirmation */}
+      {/* Settings panel */}
+      {showSettings && (
+        <GroupSettingsPanel
+          group={group}
+          isAdmin={isAdmin}
+          onUpdate={updateGroup}
+          onDelete={deleteGroup}
+          onLeave={leaveGroup}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* Delete expense confirmation */}
       {deleteTarget && (
         <ConfirmDialog
           title="Delete expense?"
