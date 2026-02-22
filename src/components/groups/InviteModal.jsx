@@ -25,8 +25,9 @@ export default function InviteModal({ group, onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(),
+          groupId: group.id,
           groupName: group.name,
-          inviterName: profile?.display_name,
+          inviteCode: group.invite_code,
         }),
       })
 
@@ -34,10 +35,12 @@ export default function InviteModal({ group, onClose }) {
 
       if (!res.ok) {
         toast.error(data.error || 'Failed to send invite')
-      } else if (data.alreadyRegistered) {
-        toast.success(`${email} already has an account — share the invite link instead!`)
-      } else {
-        toast.success(`Invite sent to ${email}!`)
+      } else if (data.alreadyMember) {
+        toast(`${email} is already in this group`, { icon: 'ℹ️' })
+      } else if (data.addedDirectly) {
+        toast.success(`${email} has been added to the group!`)
+      } else if (data.inviteSent) {
+        toast.success(`Invite sent to ${email}! They'll be auto-added when they sign up.`)
       }
 
       setEmail('')
@@ -86,7 +89,7 @@ export default function InviteModal({ group, onClose }) {
             </button>
           </div>
           <p className="text-xs text-osps-gray mt-2 font-body">
-            They'll receive a branded email with a link to join.
+            Existing users are added instantly. New users get an invite email.
           </p>
         </form>
 

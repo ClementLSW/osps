@@ -36,6 +36,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { auth } from '@/lib/api'
 import { setAccessToken, getSupabase } from '@/lib/supabase'
+import toast from 'react-hot-toast'
 
 const AuthContext = createContext(null)
 
@@ -64,6 +65,10 @@ export function AuthProvider({ children }) {
           // Step 3: Fetch the full profile from Supabase
           // (the session only has basic info from the OAuth provider)
           await fetchProfile(sessionUser.id)
+
+          // Step 4: Claim any pending group invites for this email
+          // Runs silently — if there are invites, user gets auto-added
+          claimPendingInvites()
         } else {
           setUser(null)
           setProfile(null)
@@ -100,6 +105,24 @@ export function AuthProvider({ children }) {
       console.error('fetchProfile failed:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function claimPendingInvites() {
+    try {
+      const res = await fetch('/api/auth/claim-invites', {
+        credentials: 'same-origin',
+      })
+      if (!res.ok) return
+      const { claimed } = await res.json()
+      if (claimed?.length > 0) {
+        for (const invite of claimed) {
+          toast.success(`You've been added to ${invite.groupName || 'a group'}!`, { duration: 4000 })
+        }
+      }
+    } catch (err) {
+      // Non-critical — don't block the UI
+      console.error('Claim invites failed:', err)
     }
   }
 

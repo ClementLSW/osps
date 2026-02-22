@@ -1,106 +1,210 @@
 /**
  * Auth Invite — /api/auth/invite
  *
- * Sends an invite email to a new user via Supabase's built-in invite API.
- * This is an admin-only endpoint — it requires the SERVICE_ROLE_KEY
- * because only admins should be able to invite users.
+ * Smart invite flow:
  *
- * We also verify the requester is authenticated by checking their
- * session cookie before allowing the invite.
+ *   1. Check if the email belongs to an existing user
+ *      → YES: Add them to the group directly. Done.
+ *      → NO:  Store a pending invite + send Supabase invite email.
+ *             When they sign up and log in, the app auto-joins them.
  *
- * Request body:
- *   { email: "friend@example.com", groupName: "Bali Trip", inviterName: "Clement" }
+ * Uses the SERVICE_ROLE_KEY to:
+ *   - Query auth.users by email (admin-only)
+ *   - Insert into group_members for existing users
+ *   - Call Supabase's /auth/v1/invite for new users
  */
 
 import { parseCookies, decrypt } from './_utils/cookies.mjs'
 
 export default async (request) => {
   const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const siteUrl = process.env.SITE_URL
 
   if (!serviceRoleKey) {
-    return new Response(
-      JSON.stringify({ error: 'Invite not configured — missing service role key' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return respond(500, { error: 'Invite not configured — missing service role key' })
   }
 
   if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405, headers: { 'Content-Type': 'application/json' },
-    })
+    return respond(405, { error: 'Method not allowed' })
   }
 
-  // Verify the requester is logged in
+  // Verify requester is logged in
   const cookies = parseCookies(request)
-  const sessionCookie = cookies['osps-session']
-  if (!sessionCookie) {
-    return new Response(JSON.stringify({ error: 'Not authenticated' }), {
-      status: 401, headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const session = decrypt(sessionCookie)
+  const session = decrypt(cookies['osps-session'] || '')
   if (!session) {
-    return new Response(JSON.stringify({ error: 'Invalid session' }), {
-      status: 401, headers: { 'Content-Type': 'application/json' },
-    })
+    return respond(401, { error: 'Not authenticated' })
   }
 
   try {
-    const { email, groupName, inviterName } = await request.json()
+    const { email, groupId, groupName, inviteCode } = await request.json()
 
-    if (!email) {
-      return new Response(
-        JSON.stringify({ error: 'Email is required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      )
+    if (!email || !groupId) {
+      return respond(400, { error: 'Email and groupId are required' })
     }
 
-    // Call Supabase's invite endpoint with the service role key
-    // The .Data field is passed to the email template as {{ .Data.xxx }}
-    const inviteResponse = await fetch(`${supabaseUrl}/auth/v1/invite`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({
-        email,
-        data: {
-          invited_by: inviterName || session.user?.display_name || 'Someone',
-          group_name: groupName || 'a group',
+    const normalizedEmail = email.trim().toLowerCase()
+
+    // ── Step 1: Check if user already exists ──
+    const userLookup = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=1`,
+      {
+        method: 'GET',
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
         },
-      }),
-    })
+      }
+    )
 
-    const inviteData = await inviteResponse.json()
+    // Use the admin user list to find by email
+    // (There's no direct "get user by email" endpoint, so we use the filter approach)
+    const adminQuery = await fetch(
+      `${supabaseUrl}/rest/v1/rpc/get_user_id_by_email`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ lookup_email: normalizedEmail }),
+      }
+    )
 
-    if (!inviteResponse.ok) {
-      // If user already exists, that's fine — they just need the invite link
-      if (inviteData.msg?.includes('already registered') || inviteData.error_description?.includes('already registered')) {
-        return new Response(
-          JSON.stringify({ success: true, alreadyRegistered: true }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
+    // If the RPC doesn't exist yet, fall back to the admin users API
+    let existingUserId = null
+
+    if (adminQuery.ok) {
+      const result = await adminQuery.json()
+      existingUserId = result
+    }
+
+    // Fallback: query auth.users directly via PostgREST with service role
+    if (!existingUserId) {
+      const directLookup = await fetch(
+        `${supabaseUrl}/rest/v1/profiles?select=id&email=eq.${encodeURIComponent(normalizedEmail)}`,
+        {
+          headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            Accept: 'application/json',
+          },
+        }
+      )
+
+      if (directLookup.ok) {
+        const profiles = await directLookup.json()
+        if (profiles.length > 0) {
+          existingUserId = profiles[0].id
+        }
+      }
+    }
+
+    if (existingUserId) {
+      // ── User exists → add to group directly ──
+
+      // Check if already a member
+      const memberCheck = await fetch(
+        `${supabaseUrl}/rest/v1/group_members?group_id=eq.${groupId}&user_id=eq.${existingUserId}`,
+        {
+          headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            Accept: 'application/json',
+          },
+        }
+      )
+
+      const existingMembers = await memberCheck.json()
+      if (existingMembers.length > 0) {
+        return respond(200, { success: true, alreadyMember: true })
       }
 
-      return new Response(
-        JSON.stringify({ error: inviteData.msg || inviteData.error_description || 'Invite failed' }),
-        { status: inviteResponse.status, headers: { 'Content-Type': 'application/json' } }
+      // Add to group
+      const addMember = await fetch(
+        `${supabaseUrl}/rest/v1/group_members`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            group_id: groupId,
+            user_id: existingUserId,
+            role: 'member',
+          }),
+        }
       )
-    }
 
-    return new Response(
-      JSON.stringify({ success: true }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    )
+      if (!addMember.ok) {
+        const err = await addMember.text()
+        console.error('Failed to add member:', err)
+        return respond(500, { error: 'Failed to add member to group' })
+      }
+
+      return respond(200, { success: true, addedDirectly: true })
+
+    } else {
+      // ── User doesn't exist → store pending invite + send email ──
+
+      // Store pending invite (using service role to bypass RLS)
+      await fetch(
+        `${supabaseUrl}/rest/v1/pending_invites`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            group_id: groupId,
+            invited_by: session.user.id,
+          }),
+        }
+      )
+
+      // Send Supabase invite email
+      const inviteResponse = await fetch(`${supabaseUrl}/auth/v1/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          data: {
+            invited_by: session.user?.display_name || 'Someone',
+            group_name: groupName || 'a group',
+          },
+        }),
+      })
+
+      if (!inviteResponse.ok) {
+        const errData = await inviteResponse.json()
+        console.error('Invite API error:', errData)
+        // Don't fail — pending invite is stored, they can use the link
+      }
+
+      return respond(200, { success: true, inviteSent: true })
+    }
   } catch (err) {
     console.error('Invite error:', err)
-    return new Response(
-      JSON.stringify({ error: 'Server error' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return respond(500, { error: 'Server error' })
   }
+}
+
+function respond(status, data) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }

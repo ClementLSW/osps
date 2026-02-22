@@ -44,6 +44,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/auth/claim-invites"
+  to = "/.netlify/functions/auth-claim-invites"
+  status = 200
+
+[[redirects]]
   from = "/api/db"
   to = "/.netlify/functions/db-query"
   status = 200
