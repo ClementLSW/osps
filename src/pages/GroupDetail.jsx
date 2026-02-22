@@ -160,7 +160,7 @@ export default function GroupDetail() {
                     <span className="currency text-osps-red font-semibold">
                       {formatCurrency(t.amount, group.currency)}
                     </span>
-                    {isConfirming ? (
+                    {t.from === profile?.id && (isConfirming ? (
                       <button
                         onClick={() => recordSettlement(t)}
                         className="text-xs font-display font-semibold bg-osps-green text-white px-3 py-1.5 rounded-lg
@@ -176,7 +176,7 @@ export default function GroupDetail() {
                       >
                         Paid
                       </button>
-                    )}
+                    ))}
                   </div>
                 </div>
               )
