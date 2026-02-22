@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -94,6 +95,16 @@ export default function Landing() {
             required
             minLength={6}
           />
+          {!isSignUp && (
+            <div className="text-right -mt-1">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-osps-gray hover:text-osps-red transition-colors"
+              >
+                Forgot password?
+              </Link>
+            </div>
+          )}
           <button type="submit" className="btn-primary w-full" disabled={loading}>
             {loading ? 'Loading...' : isSignUp ? 'Create Account' : 'Sign In'}
           </button>

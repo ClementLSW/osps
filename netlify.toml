@@ -49,6 +49,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/auth/set-session"
+  to = "/.netlify/functions/auth-set-session"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/reset-request"
+  to = "/.netlify/functions/auth-reset-request"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/update-password"
+  to = "/.netlify/functions/auth-update-password"
+  status = 200
+
+[[redirects]]
   from = "/api/db"
   to = "/.netlify/functions/db-query"
   status = 200

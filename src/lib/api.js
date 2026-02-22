@@ -79,6 +79,38 @@ export const auth = {
     })
     window.location.href = '/'
   },
+
+  /**
+   * Request a password reset email.
+   * Always returns success — server never reveals if email exists.
+   */
+  async resetPassword(email) {
+    const res = await fetch(`${API_BASE}/auth/reset-request`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    return data
+  },
+
+  /**
+   * Update password using an active session.
+   * Called from the /reset-password page after the recovery email flow.
+   */
+  async updatePassword(password) {
+    const res = await fetch(`${API_BASE}/auth/update-password`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Update failed')
+    return data
+  },
 }
 
 // ── Database API ────────────────────────────────────────────

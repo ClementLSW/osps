@@ -40,7 +40,11 @@ export default async (request) => {
     }
 
     // Call Supabase's signup endpoint server-to-server
-    const signupResponse = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+    // redirect_to tells Supabase where to send the user after they
+    // click the email confirmation link. Without this, Supabase
+    // redirects to the Site URL which doesn't handle the tokens.
+    const redirectTo = encodeURIComponent(`${siteUrl}/auth/confirm`)
+    const signupResponse = await fetch(`${supabaseUrl}/auth/v1/signup?redirect_to=${redirectTo}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

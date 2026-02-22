@@ -7,6 +7,9 @@ import CreateGroup from '@/pages/CreateGroup'
 import GroupDetail from '@/pages/GroupDetail'
 import AddExpense from '@/pages/AddExpense'
 import JoinGroup from '@/pages/JoinGroup'
+import AuthConfirm from '@/pages/AuthConfirm'
+import ForgotPassword from '@/pages/ForgotPassword'
+import ResetPassword from '@/pages/ResetPassword'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -27,6 +30,9 @@ function AppRoutes() {
       {/* Public */}
       <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
       <Route path="/join/:inviteCode" element={<JoinGroup />} />
+      <Route path="/auth/confirm" element={<AuthConfirm />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Protected */}
       <Route element={<AuthGuard />}>
