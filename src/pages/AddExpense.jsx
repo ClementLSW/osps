@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { splitEqual, splitExact, splitPercentage, splitShares, splitLineItems } from '@/lib/splitCalculators'
@@ -17,10 +17,15 @@ const SPLIT_MODES = [
 export default function AddExpense() {
   const { groupId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { profile } = useAuth()
+
+  const editId = searchParams.get('edit')
+  const isEdit = Boolean(editId)
 
   const [members, setMembers] = useState([])
   const [group, setGroup] = useState(null)
+  const [loadingEdit, setLoadingEdit] = useState(isEdit)
 
   // Form state
   const [title, setTitle] = useState('')
@@ -28,6 +33,7 @@ export default function AddExpense() {
   const [paidBy, setPaidBy] = useState(profile?.id)
   const [splitMode, setSplitMode] = useState('equal')
   const [selectedMembers, setSelectedMembers] = useState([])
+  const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
 
   // Split-mode specific state
@@ -52,10 +58,8 @@ export default function AddExpense() {
     const memberList = memberData?.map(m => m.profiles) || []
     setGroup(groupData)
     setMembers(memberList)
-    setSelectedMembers(memberList.map(m => m.id))
-    setPaidBy(profile?.id)
 
-    // Initialize split-mode state
+    // Initialize defaults
     const defaultShares = {}
     const defaultPercentages = {}
     const defaultExact = {}
@@ -67,6 +71,113 @@ export default function AddExpense() {
     setShares(defaultShares)
     setPercentages(defaultPercentages)
     setExactAmounts(defaultExact)
+
+    if (!isEdit) {
+      setSelectedMembers(memberList.map(m => m.id))
+      setPaidBy(profile?.id)
+    } else {
+      await loadExpenseForEdit(memberList, defaultShares, defaultPercentages, defaultExact)
+    }
+  }
+
+  async function loadExpenseForEdit(memberList, defaultShares, defaultPercentages, defaultExact) {
+    setLoadingEdit(true)
+
+    // Fetch expense with splits
+    const { data: expense, error } = await getSupabase()
+      .from('expenses')
+      .select(`
+        *,
+        splits:expense_splits (user_id, owed_amount)
+      `)
+      .eq('id', editId)
+      .single()
+
+    if (error || !expense) {
+      toast.error('Could not load expense')
+      navigate(`/group/${groupId}`)
+      return
+    }
+
+    // Pre-populate common fields
+    setTitle(expense.title)
+    setTotalAmount(String(expense.total_amount))
+    setPaidBy(expense.paid_by)
+    setSplitMode(expense.split_mode)
+    setNotes(expense.notes || '')
+
+    // Pre-populate split-mode-specific fields
+    const splitUserIds = expense.splits?.map(s => s.user_id) || []
+    setSelectedMembers(splitUserIds)
+
+    const total = parseFloat(expense.total_amount)
+
+    switch (expense.split_mode) {
+      case 'equal':
+        // selectedMembers is sufficient
+        break
+
+      case 'exact': {
+        const exact = { ...defaultExact }
+        expense.splits?.forEach(s => {
+          exact[s.user_id] = String(s.owed_amount)
+        })
+        setExactAmounts(exact)
+        break
+      }
+
+      case 'percentage': {
+        const pcts = { ...defaultPercentages }
+        expense.splits?.forEach(s => {
+          pcts[s.user_id] = String(Math.round((s.owed_amount / total) * 100))
+        })
+        setPercentages(pcts)
+        break
+      }
+
+      case 'shares': {
+        // Back-calculate shares from owed_amounts
+        // Find the smallest split to use as the base unit
+        const amounts = expense.splits?.map(s => s.owed_amount) || []
+        const minAmount = Math.min(...amounts.filter(a => a > 0))
+        const sh = { ...defaultShares }
+        expense.splits?.forEach(s => {
+          sh[s.user_id] = minAmount > 0 ? Math.round(s.owed_amount / minAmount) : 1
+        })
+        setShares(sh)
+        break
+      }
+
+      case 'line_item': {
+        // Fetch line items with assignments
+        const { data: items } = await getSupabase()
+          .from('line_items')
+          .select(`
+            *,
+            assignments:line_item_assignments (user_id, share_count)
+          `)
+          .eq('expense_id', editId)
+          .order('sort_order', { ascending: true })
+
+        if (items?.length > 0) {
+          const li = items.map(item => {
+            const assignments = {}
+            item.assignments?.forEach(a => {
+              assignments[a.user_id] = true
+            })
+            return {
+              name: item.name,
+              amount: String(item.amount),
+              assignments,
+            }
+          })
+          setLineItems(li)
+        }
+        break
+      }
+    }
+
+    setLoadingEdit(false)
   }
 
   function toggleMember(id) {
@@ -136,6 +247,14 @@ export default function AddExpense() {
 
     setSaving(true)
 
+    if (isEdit) {
+      await handleUpdate(total, splits)
+    } else {
+      await handleCreate(total, splits)
+    }
+  }
+
+  async function handleCreate(total, splits) {
     // Insert expense
     const { data: expense, error: expError } = await getSupabase()
       .from('expenses')
@@ -146,6 +265,7 @@ export default function AddExpense() {
         total_amount: total,
         currency: group?.currency || 'SGD',
         split_mode: splitMode,
+        notes: notes.trim() || null,
         created_by: profile.id,
       })
       .select()
@@ -176,26 +296,100 @@ export default function AddExpense() {
 
     // If line items, save those too
     if (splitMode === 'line_item') {
-      for (const item of lineItems.filter(i => i.name && parseFloat(i.amount) > 0)) {
-        const { data: li } = await getSupabase()
-          .from('line_items')
-          .insert({ expense_id: expense.id, name: item.name, amount: parseFloat(item.amount) })
-          .select()
-          .single()
-
-        if (li) {
-          const assignments = Object.entries(item.assignments)
-            .filter(([_, v]) => v)
-            .map(([userId]) => ({ line_item_id: li.id, user_id: userId, share_count: 1 }))
-          if (assignments.length) {
-            await getSupabase().from('line_item_assignments').insert(assignments)
-          }
-        }
-      }
+      await saveLineItems(expense.id)
     }
 
     toast.success('Expense added!')
     navigate(`/group/${groupId}`)
+  }
+
+  async function handleUpdate(total, splits) {
+    // Update the expense record
+    const { error: expError } = await getSupabase()
+      .from('expenses')
+      .update({
+        paid_by: paidBy,
+        title: title.trim(),
+        total_amount: total,
+        split_mode: splitMode,
+        notes: notes.trim() || null,
+      })
+      .eq('id', editId)
+
+    if (expError) {
+      toast.error('Failed to update expense')
+      console.error(expError)
+      setSaving(false)
+      return
+    }
+
+    // Delete old splits (cascade handles line_item_assignments via line_items)
+    await getSupabase()
+      .from('expense_splits')
+      .delete()
+      .eq('expense_id', editId)
+
+    // Delete old line items (if any — cascade handles assignments)
+    await getSupabase()
+      .from('line_items')
+      .delete()
+      .eq('expense_id', editId)
+
+    // Insert new splits
+    const { error: splitError } = await getSupabase()
+      .from('expense_splits')
+      .insert(splits.map(s => ({
+        expense_id: editId,
+        user_id: s.user_id,
+        owed_amount: s.owed_amount,
+      })))
+
+    if (splitError) {
+      toast.error('Failed to save splits')
+      console.error(splitError)
+      setSaving(false)
+      return
+    }
+
+    // If line items, save those too
+    if (splitMode === 'line_item') {
+      await saveLineItems(editId)
+    }
+
+    toast.success('Expense updated!')
+    navigate(`/group/${groupId}`)
+  }
+
+  async function saveLineItems(expenseId) {
+    for (const item of lineItems.filter(i => i.name && parseFloat(i.amount) > 0)) {
+      const { data: li } = await getSupabase()
+        .from('line_items')
+        .insert({ expense_id: expenseId, name: item.name, amount: parseFloat(item.amount) })
+        .select()
+        .single()
+
+      if (li) {
+        const assignments = Object.entries(item.assignments)
+          .filter(([_, v]) => v)
+          .map(([userId]) => ({ line_item_id: li.id, user_id: userId, share_count: 1 }))
+        if (assignments.length) {
+          await getSupabase().from('line_item_assignments').insert(assignments)
+        }
+      }
+    }
+  }
+
+  if (loadingEdit) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 bg-osps-gray-light rounded w-1/4" />
+          <div className="h-10 bg-osps-gray-light rounded-xl" />
+          <div className="h-10 bg-osps-gray-light rounded-xl" />
+          <div className="h-10 bg-osps-gray-light rounded-xl" />
+        </div>
+      </div>
+    )
   }
 
   const preview = computeSplits()
@@ -205,7 +399,9 @@ export default function AddExpense() {
       <button onClick={() => navigate(-1)} className="text-sm text-osps-gray hover:text-osps-black mb-4">
         ← Back
       </button>
-      <h1 className="text-2xl font-display font-bold mb-6">Add Expense</h1>
+      <h1 className="text-2xl font-display font-bold mb-6">
+        {isEdit ? 'Edit Expense' : 'Add Expense'}
+      </h1>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Title & Amount */}
@@ -225,9 +421,9 @@ export default function AddExpense() {
             placeholder="0.00"
             value={totalAmount}
             onChange={e => setTotalAmount(e.target.value)}
-            className="input pl-8 text-2xl font-mono"
+            className="input pl-8 text-lg font-mono"
             step="0.01"
-            min="0.01"
+            min="0"
             required
           />
         </div>
@@ -244,6 +440,18 @@ export default function AddExpense() {
               <option key={m.id} value={m.id}>{m.display_name}</option>
             ))}
           </select>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="text-sm text-osps-gray font-medium block mb-2">Notes (optional)</label>
+          <input
+            type="text"
+            placeholder="e.g. extra cheese"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            className="input text-sm"
+          />
         </div>
 
         {/* Split mode tabs */}
@@ -453,7 +661,7 @@ export default function AddExpense() {
         )}
 
         <button type="submit" className="btn-primary w-full" disabled={saving}>
-          {saving ? 'Saving...' : 'Add Expense'}
+          {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Expense'}
         </button>
       </form>
     </div>

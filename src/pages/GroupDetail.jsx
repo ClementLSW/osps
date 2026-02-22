@@ -251,8 +251,8 @@ export default function GroupDetail() {
                     <span className="currency font-semibold">
                       {formatCurrency(expense.total_amount, expense.currency)}
                     </span>
-                    <span className={`text-osps-gray text-xs transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-                      ▼
+                    <span className={`text-sm font-display transition-all duration-200 ${isExpanded ? 'text-osps-black font-bold' : 'text-osps-gray/40 font-medium'}`}>
+                      {isExpanded ? '✕' : '+'}
                     </span>
                   </div>
                 </button>
