@@ -10,6 +10,7 @@ import JoinGroup from '@/pages/JoinGroup'
 import AuthConfirm from '@/pages/AuthConfirm'
 import ForgotPassword from '@/pages/ForgotPassword'
 import ResetPassword from '@/pages/ResetPassword'
+import PrivacyPolicy from '@/pages/PrivacyPolicy'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ function AppRoutes() {
       <Route path="/auth/confirm" element={<AuthConfirm />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
 
       {/* Protected */}
       <Route element={<AuthGuard />}>

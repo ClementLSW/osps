@@ -119,6 +119,15 @@ export default function Landing() {
             {isSignUp ? 'Sign in' : 'Sign up'}
           </button>
         </p>
+
+        <p className="text-center mt-8">
+          <Link
+            to="/privacy"
+            className="text-xs text-osps-gray/50 hover:text-osps-gray transition-colors"
+          >
+            Privacy Policy
+          </Link>
+        </p>
       </div>
     </div>
   )
