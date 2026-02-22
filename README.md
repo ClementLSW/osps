@@ -1,126 +1,138 @@
-# O$P$ — Owe Money, Pay Money
+<div align="center">
 
-> Expense splitting for friends who keep score.
+# O$P$
 
-![License](https://img.shields.io/badge/license-MIT-green)
+### Owe Money, Pay Money.
 
-## What is this?
+Expense splitting for friends who keep score.
 
-O$P$ is a free, open-source expense splitting app. Create a group, add expenses, and let the app figure out who owes whom — with the minimum number of payments to settle up.
+**[osps.clementlsw.com](https://osps.clementlsw.com)**
 
-Supports five split modes: **equal**, **exact amounts**, **percentage**, **shares**, and **line items**.
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![Status](https://img.shields.io/badge/status-active-brightgreen?style=flat-square)
+![Netlify](https://img.shields.io/badge/netlify-deployed-00C7B7?style=flat-square&logo=netlify&logoColor=white)
 
-## Tech Stack
+---
 
-- **Frontend:** React + Vite + TailwindCSS
-- **Backend:** Supabase (Auth, Postgres, Realtime, Edge Functions)
-- **Hosting:** Netlify
-- **Auth:** Supabase Auth (Google OAuth + email/password)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/Tailwind-3-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres-3FCF8E?style=flat-square&logo=supabase&logoColor=white)
+![Netlify Functions](https://img.shields.io/badge/Netlify-Functions-00C7B7?style=flat-square&logo=netlify&logoColor=white)
+![Resend](https://img.shields.io/badge/Resend-SMTP-000000?style=flat-square)
 
-## Getting Started
+</div>
 
-### Prerequisites
+---
 
-- Node.js 18+
-- A [Supabase](https://supabase.com) project (free tier works)
-- A [Netlify](https://netlify.com) account (optional, for deployment)
+## What is O$P$?
 
-### 1. Clone & install
+O$P$ (Owe Money, Pay Money) is a free, open-source expense splitting app built for friend groups. Create a group, add expenses, and let the app figure out who owes whom — with the minimum number of payments to settle up.
 
-```bash
-git clone https://github.com/YOUR_USERNAME/osps.git
-cd osps
-npm install
-```
+The name is a nod to Singapore's infamous loan shark graffiti — except instead of threatening your neighbours, you're chasing your friend for $4.50 of roti prata.
 
-### 2. Set up Supabase
+## Features
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to **SQL Editor** and run the contents of `supabase/migrations/001_initial_schema.sql`
-3. Enable **Google OAuth** in Authentication → Providers (optional)
-4. Copy your project URL and anon key from Settings → API
+### 🔐 Server-Side Authentication
+Full PKCE OAuth flow with Google, plus email/password sign-up. Auth tokens are encrypted with AES-256-GCM and stored in httpOnly cookies — no tokens in localStorage, no tokens in JavaScript. The browser never sees your credentials.
 
-### 3. Configure environment
+### 👥 Groups & Invites
+Create groups for ongoing expenses (roommates, couples) or time-bound events (trips, dinners). Share an invite link — anyone with the link can join after signing in. Groups support admin/member roles.
 
-```bash
-cp .env.example .env
-```
+### 💰 5 Ways to Split
+- **Equal** — Total ÷ number of people
+- **Exact** — Manually assign per person
+- **Percentage** — Each person pays X%
+- **Shares** — Weighted split (e.g., 2 shares vs 1 share)
+- **Line Item** — Assign receipt items to people; tax/tip distributed proportionally
 
-Edit `.env` with your Supabase credentials:
+### ⚖️ Automatic Debt Simplification
+A greedy reconciliation algorithm computes the minimum set of payments to settle all debts. For N people, it produces at most N-1 transactions. No more "you pay me, I pay her, she pays you" chains.
 
-```
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
+### 📅 Trip Mode with Daily Checkpoints
+Groups can have start/end dates. Time-bound groups get daily expense summaries so everyone confirms charges while memory is fresh — no more arguments at settlement time.
 
-### 4. Run locally
+### 📧 Transactional Emails
+Branded email templates via Resend for account confirmation, password reset, and invitations. Custom SMTP ensures reliable delivery.
 
-```bash
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173).
-
-### 5. Deploy to Netlify
-
-```bash
-# Option A: Netlify CLI
-npm install -g netlify-cli
-netlify deploy --prod
-
-# Option B: Connect your Git repo in Netlify dashboard
-# Build command: npm run build
-# Publish directory: dist
-```
-
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Netlify → Site settings → Environment variables.
-
-## Project Structure
+## Architecture
 
 ```
-osps/
-├── src/
-│   ├── components/     # UI components by feature
-│   ├── hooks/          # React hooks (auth, data, balances)
-│   ├── lib/            # Core logic (supabase client, split math, reconciliation)
-│   ├── pages/          # Route-level page components
-│   └── main.jsx        # App entry point
-├── supabase/
-│   └── migrations/     # SQL schema + RLS policies
-├── netlify.toml        # Netlify deploy config
-└── package.json
+┌─────────────────────────────────────────────────────┐
+│                     Browser                          │
+│  React + Vite + TailwindCSS                          │
+│  No auth tokens — only httpOnly cookies              │
+└──────────────────────┬──────────────────────────────┘
+                       │
+        ┌──────────────┴──────────────┐
+        │                             │
+        ▼                             ▼
+┌───────────────┐          ┌────────────────────┐
+│   Netlify     │          │    Supabase        │
+│   Functions   │          │                    │
+│               │          │  ┌──────────────┐  │
+│  • OAuth      │ server   │  │   Postgres   │  │
+│    (PKCE)     │ to       │  │   + RLS      │  │
+│  • Session    │ server   │  └──────────────┘  │
+│    mgmt       ├─────────►│  ┌──────────────┐  │
+│  • Email      │          │  │   Auth       │  │
+│    auth       │          │  │  (GoTrue)    │  │
+│  • Token      │          │  └──────────────┘  │
+│    refresh    │          │  ┌──────────────┐  │
+│               │          │  │   Realtime   │  │
+└───────────────┘          │  └──────────────┘  │
+                           └────────────────────┘
 ```
 
-## Split Modes
+### Security Model
 
-| Mode | Description |
-|------|-------------|
-| **Equal** | Total ÷ number of people |
-| **Exact** | Manually enter amount per person |
-| **Percentage** | Each person pays X% |
-| **Shares** | Weighted split (e.g., 2 shares vs 1 share) |
-| **Line Item** | Assign receipt items to people; tax/tip distributed proportionally |
-
-## Reconciliation
-
-O$P$ uses a greedy debt simplification algorithm to minimize the number of payments needed to settle a group. For N people, it produces at most N-1 transactions.
+| Layer | Protection |
+|-------|-----------|
+| Auth tokens | AES-256-GCM encrypted, httpOnly cookies |
+| PKCE OAuth | Code verifier never leaves the server |
+| Database | Row Level Security on every table |
+| Passwords | bcrypt hashed by Supabase (never stored in plaintext) |
+| API keys | Anon key is public (RLS enforces access); service key server-only |
+| Transport | HTTPS everywhere; Secure + SameSite=Lax on cookies |
 
 ## Roadmap
 
-- [x] Auth (Google OAuth + email)
-- [x] Groups with invite links
-- [x] All 5 split modes
-- [x] Debt simplification
+- [x] Server-side PKCE OAuth (Google)
+- [x] Email/password authentication
+- [x] Encrypted httpOnly session cookies
+- [x] Custom SMTP email delivery (Resend)
+- [x] Branded transactional email templates
+- [x] Groups with categories, currency, and date ranges
+- [x] Invite links for group joining
+- [x] 5 split modes with rounding correction
+- [x] Greedy debt simplification algorithm
+- [x] Row Level Security across all tables
+- [ ] Daily checkpoint / expense confirmation
+- [ ] Settle-up recording ("mark as paid")
+- [ ] Password reset flow
 - [ ] OCR receipt parsing (auto-populate line items)
 - [ ] Multi-currency support
 - [ ] Recurring expenses
-- [ ] Export to PDF
+- [ ] Export group summary as PDF
 - [ ] Push notifications / reminders
 
-## Contributing
+## Getting Started
 
-PRs welcome! This is a FOSS project — feel free to fork, modify, and share.
+```bash
+git clone https://github.com/ClementLSW/osps.git
+cd osps
+npm install
+cp .env.example .env    # fill in your Supabase credentials
+npm run dev             # http://localhost:5173
+```
+
+See [docs/SERVER_AUTH_ARCHITECTURE.md](docs/SERVER_AUTH_ARCHITECTURE.md) for a detailed breakdown of the auth system.
 
 ## License
 
-MIT
+MIT — free to use, fork, modify, and share.
+
+<div align="center">
+<br>
+<sub>Built by <a href="https://clementlsw.com">Clement Leow</a> in Singapore 🇸🇬</sub>
+</div>
