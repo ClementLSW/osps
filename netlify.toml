@@ -73,6 +73,11 @@
   to = "/.netlify/functions/db-query"
   status = 200
 
+[[redirects]]
+  from = "/google3a0ccd0dbbf0dd0b.html"
+  to = "/google3a0ccd0dbbf0dd0b.html"
+  status = 200
+
 # SPA routing — all other paths go to index.html
 [[redirects]]
   from = "/*"
