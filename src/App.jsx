@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
+import PwaInstallBanner from '@/components/PwaInstallBanner'
 import AuthGuard from '@/components/auth/AuthGuard'
 import Landing from '@/pages/Landing'
 import Dashboard from '@/pages/Dashboard'
@@ -57,6 +58,7 @@ export default function App() {
     <AuthProvider>
       <div className="min-h-screen bg-osps-cream">
         <AppRoutes />
+        <PwaInstallBanner />
       </div>
     </AuthProvider>
   )
