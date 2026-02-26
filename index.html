@@ -6,15 +6,74 @@
     <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="O$P$ — Owe Money, Pay Money. Expense splitting for friends who keep score." />
+    <meta name="description" content="O$P$ (Owe Money, Pay Money) is a free, open-source expense splitting app. Split bills equally, by percentage, shares, exact amounts, or line items. OCR receipt scanning. Built for friend groups in Singapore and beyond." />
     <meta name="theme-color" content="#E63946" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- SEO: Canonical + robot directives -->
+    <link rel="canonical" href="https://osps.clementlsw.com/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="Clement" />
+
+    <!-- Open Graph (WhatsApp, Telegram, Facebook, LinkedIn, Discord) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://osps.clementlsw.com/" />
+    <meta property="og:title" content="O$P$ — Owe Money, Pay Money" />
+    <meta property="og:description" content="Free, open-source expense splitting for friend groups. 5 split modes, OCR receipt scanning, auto debt simplification." />
+    <meta property="og:image" content="https://osps.clementlsw.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="O$P$" />
+    <meta property="og:locale" content="en_SG" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="O$P$ — Owe Money, Pay Money" />
+    <meta name="twitter:description" content="Free, open-source expense splitting for friend groups. 5 split modes, OCR receipt scanning, auto debt simplification." />
+    <meta name="twitter:image" content="https://osps.clementlsw.com/og-image.png" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "O$P$ — Owe Money, Pay Money",
+      "url": "https://osps.clementlsw.com",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "SGD"
+      },
+      "description": "Free, open-source expense splitting app for friend groups. Split bills 5 ways, scan receipts, simplify debts automatically.",
+      "author": {
+        "@type": "Person",
+        "name": "Clement"
+      },
+      "isAccessibleForFree": true,
+      "featureList": [
+        "Equal split",
+        "Percentage split",
+        "Shares split",
+        "Exact amount split",
+        "Line item split with tax/tip distribution",
+        "OCR receipt scanning",
+        "Automatic debt simplification",
+        "Group management with invite links",
+        "Multi-currency support (SGD, USD, MYR, THB, JPY, EUR, KRW, IDR)"
+      ]
+    }
+    </script>
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <title>O$P$ — Owe Money, Pay Money</title>
+
+    <title>O$P$ — Split Expenses with Friends | Free &amp; Open Source</title>
   </head>
   <body class="bg-osps-cream text-osps-black antialiased">
     <div id="root"></div>
