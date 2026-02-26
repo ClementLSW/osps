@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /privacy
+Allow: /terms
+Disallow: /dashboard
+Disallow: /create
+Disallow: /group/
+Disallow: /api/
+Disallow: /auth/
+
+Sitemap: https://osps.clementlsw.com/sitemap.xml
