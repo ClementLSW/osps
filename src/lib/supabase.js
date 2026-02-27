@@ -70,6 +70,3 @@ export function setAccessToken(accessToken) {
 export function getSupabase() {
   return supabase
 }
-
-// Also export as default for backward compatibility
-export { supabase }
