@@ -58,13 +58,6 @@ export default function ConfirmDialog({
           </button>
         </div>
 
-        <style>{`
-          @keyframes slideUp {
-            from { opacity: 0; transform: translateY(24px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .animate-slideUp { animation: slideUp 0.25s ease-out; }
-        `}</style>
       </div>
     </div>
   )

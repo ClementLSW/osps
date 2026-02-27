@@ -144,18 +144,6 @@ export default function AuthModal({ onClose, initialMode = 'signin' }) {
         </p>
       </div>
 
-      <style>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(24px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        .animate-slideUp { animation: slideUp 0.25s ease-out; }
-        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
-      `}</style>
     </div>
   )
 }
