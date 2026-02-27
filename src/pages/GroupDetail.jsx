@@ -8,6 +8,7 @@ import { formatRelativeDate } from '@/lib/formatDate'
 import InviteModal from '@/components/groups/InviteModal'
 import GroupSettingsPanel from '@/components/groups/GroupSettingsPanel'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { ShieldPlus, ShieldMinus, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function GroupDetail() {
@@ -25,12 +26,14 @@ export default function GroupDetail() {
   const [expandedId, setExpandedId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [receiptUrls, setReceiptUrls] = useState({}) // expenseId → signed URL
+  const [memberAction, setMemberAction] = useState(null) // { type: 'remove'|'promote'|'demote', member }
 
-  const { transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
+  const { balances, transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
-  // Derive admin status from member data
+  // Derive admin/owner status from member data
   const myRole = members.find(m => m.id === profile?.id)?.role
   const isAdmin = myRole === 'admin'
+  const isOwner = group?.created_by === profile?.id
 
   useEffect(() => {
     loadGroup()
@@ -153,6 +156,13 @@ export default function GroupDetail() {
   }
 
   async function leaveGroup() {
+    // Balance guardrail
+    const myBal = balances.get(profile.id) || 0
+    if (Math.abs(myBal) > 0.005) {
+      toast.error('Settle your balance before leaving')
+      return
+    }
+
     const { error } = await getSupabase()
       .from('group_members')
       .delete()
@@ -166,6 +176,62 @@ export default function GroupDetail() {
       toast.success('Left the group')
       setShowSettings(false)
       navigate('/dashboard')
+    }
+  }
+
+  async function removeMember(memberId) {
+    // Balance guardrail
+    const memberBal = balances.get(memberId) || 0
+    if (Math.abs(memberBal) > 0.005) {
+      toast.error('This member has an unsettled balance')
+      return
+    }
+
+    const { error } = await getSupabase()
+      .from('group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('user_id', memberId)
+
+    if (error) {
+      toast.error('Failed to remove member')
+      console.error(error)
+    } else {
+      toast.success('Member removed')
+      loadGroup()
+    }
+  }
+
+  async function changeRole(memberId, newRole) {
+    const { error } = await getSupabase()
+      .from('group_members')
+      .update({ role: newRole })
+      .eq('group_id', groupId)
+      .eq('user_id', memberId)
+
+    if (error) {
+      toast.error('Failed to update role')
+      console.error(error)
+    } else {
+      toast.success(newRole === 'admin' ? 'Promoted to admin' : 'Changed to member')
+      loadGroup()
+    }
+  }
+
+  async function transferOwnership(newOwnerId) {
+    // The DB trigger auto-promotes the new owner to admin
+    const { error } = await getSupabase()
+      .from('groups')
+      .update({ created_by: newOwnerId })
+      .eq('id', groupId)
+
+    if (error) {
+      toast.error('Failed to transfer ownership')
+      console.error(error)
+    } else {
+      const newOwner = members.find(m => m.id === newOwnerId)
+      toast.success(`Ownership transferred to ${newOwner?.display_name}`)
+      loadGroup()
     }
   }
 
@@ -473,15 +539,93 @@ export default function GroupDetail() {
       <h2 className="text-sm font-display font-semibold text-osps-gray uppercase tracking-wider mb-3 mt-8">
         Members ({members.length})
       </h2>
-      <div className="flex flex-wrap gap-2">
-        {members.map(m => (
-          <span key={m.id} className="bg-white border border-osps-gray-light rounded-full px-3 py-1 text-sm flex items-center gap-1.5">
-            {m.display_name}
-            {m.role === 'admin' && (
-              <span className="text-[10px] font-display font-semibold text-osps-yellow uppercase">admin</span>
-            )}
-          </span>
-        ))}
+      <div className="space-y-2">
+        {members.map(m => {
+          const memberBal = balances.get(m.id) || 0
+          const hasBalance = Math.abs(memberBal) > 0.005
+          const isMe = m.id === profile?.id
+          const adminCount = members.filter(x => x.role === 'admin').length
+          const isLastAdmin = m.role === 'admin' && adminCount === 1
+
+          return (
+            <div key={m.id} className="card flex items-center gap-3 py-3">
+              {/* Avatar */}
+              {m.avatar_url ? (
+                <img src={m.avatar_url} alt="" className="w-8 h-8 rounded-full border border-osps-gray-light" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-osps-red/10 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-display font-bold text-osps-red">
+                    {(m.display_name || '?')[0].toUpperCase()}
+                  </span>
+                </div>
+              )}
+
+              {/* Name + role */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {m.display_name}
+                  {isMe && <span className="text-osps-gray font-normal"> (you)</span>}
+                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-[10px] font-display font-semibold uppercase ${
+                    m.id === group.created_by ? 'text-osps-red'
+                    : m.role === 'admin' ? 'text-osps-yellow'
+                    : 'text-osps-gray'
+                  }`}>
+                    {m.id === group.created_by ? 'owner' : m.role}
+                  </span>
+                  {hasBalance && (
+                    <span className={`text-[10px] font-mono ${memberBal > 0 ? 'text-osps-green' : 'text-osps-red'}`}>
+                      {memberBal > 0 ? '+' : ''}{formatCurrency(memberBal, group.currency)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Admin actions (not on yourself, not on the group owner) */}
+              {isAdmin && !isMe && m.id !== group.created_by && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {/* Promote / Demote */}
+                  {m.role === 'member' ? (
+                    <button
+                      onClick={() => setMemberAction({ type: 'promote', member: m })}
+                      className="p-1.5 rounded-lg text-osps-gray hover:text-osps-yellow
+                                 hover:bg-osps-yellow/10 transition-colors"
+                      title="Promote to admin"
+                    >
+                      <ShieldPlus size={16} />
+                    </button>
+                  ) : !isLastAdmin ? (
+                    <button
+                      onClick={() => setMemberAction({ type: 'demote', member: m })}
+                      className="p-1.5 rounded-lg text-osps-gray hover:text-osps-black
+                                 hover:bg-osps-black/5 transition-colors"
+                      title="Demote to member"
+                    >
+                      <ShieldMinus size={16} />
+                    </button>
+                  ) : null}
+
+                  {/* Remove */}
+                  <button
+                    onClick={() => {
+                      if (hasBalance) {
+                        toast.error(`${m.display_name} has an unsettled balance`)
+                      } else {
+                        setMemberAction({ type: 'remove', member: m })
+                      }
+                    }}
+                    className="p-1.5 rounded-lg text-osps-gray hover:text-osps-red
+                               hover:bg-osps-red/5 transition-colors"
+                    title="Remove from group"
+                  >
+                    <XCircle size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Invite modal */}
@@ -493,8 +637,12 @@ export default function GroupDetail() {
       {showSettings && (
         <GroupSettingsPanel
           group={group}
+          members={members}
+          currentUserId={profile?.id}
           isAdmin={isAdmin}
+          isOwner={isOwner}
           onUpdate={updateGroup}
+          onTransferOwnership={transferOwnership}
           onDelete={deleteGroup}
           onLeave={leaveGroup}
           onClose={() => setShowSettings(false)}
@@ -510,6 +658,40 @@ export default function GroupDetail() {
           danger
           onConfirm={() => deleteExpense(deleteTarget.id)}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Member action confirmation */}
+      {memberAction?.type === 'remove' && (
+        <ConfirmDialog
+          title={`Remove ${memberAction.member.display_name}?`}
+          message={`They'll lose access to this group. They can rejoin with an invite link.`}
+          confirmLabel="Remove"
+          danger
+          onConfirm={() => { removeMember(memberAction.member.id); setMemberAction(null) }}
+          onCancel={() => setMemberAction(null)}
+        />
+      )}
+
+      {memberAction?.type === 'promote' && (
+        <ConfirmDialog
+          title={`Promote ${memberAction.member.display_name}?`}
+          message="They'll be able to edit the group, manage members, and delete expenses."
+          confirmLabel="Promote to admin"
+          danger={false}
+          onConfirm={() => { changeRole(memberAction.member.id, 'admin'); setMemberAction(null) }}
+          onCancel={() => setMemberAction(null)}
+        />
+      )}
+
+      {memberAction?.type === 'demote' && (
+        <ConfirmDialog
+          title={`Demote ${memberAction.member.display_name}?`}
+          message="They'll lose admin privileges but remain in the group."
+          confirmLabel="Demote to member"
+          danger={false}
+          onConfirm={() => { changeRole(memberAction.member.id, 'member'); setMemberAction(null) }}
+          onCancel={() => setMemberAction(null)}
         />
       )}
 

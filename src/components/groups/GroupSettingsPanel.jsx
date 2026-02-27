@@ -7,20 +7,25 @@ import ConfirmDialog from '@/components/ConfirmDialog'
  * GroupSettingsPanel — slide-up panel for group management.
  *
  * Props:
- *   group       — the group object
- *   isAdmin     — whether current user is admin
- *   onUpdate    — async (fields) => update group + refresh
- *   onDelete    — async () => delete group + navigate away
- *   onLeave     — async () => leave group + navigate away
- *   onClose     — close the panel
+ *   group              — the group object
+ *   members            — array of { id, display_name, role }
+ *   currentUserId      — current user's profile ID
+ *   isAdmin            — whether current user is admin
+ *   isOwner            — whether current user is the group creator
+ *   onUpdate           — async (fields) => update group + refresh
+ *   onTransferOwnership — async (newOwnerId) => transfer + refresh
+ *   onDelete           — async () => delete group + navigate away
+ *   onLeave            — async () => leave group + navigate away
+ *   onClose            — close the panel
  */
-export default function GroupSettingsPanel({ group, isAdmin, onUpdate, onDelete, onLeave, onClose }) {
+export default function GroupSettingsPanel({ group, members, currentUserId, isAdmin, isOwner, onUpdate, onTransferOwnership, onDelete, onLeave, onClose }) {
   useScrollLock()
   const [name, setName] = useState(group.name)
   const [currency, setCurrency] = useState(group.currency)
   const [showCurrency, setShowCurrency] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [confirmAction, setConfirmAction] = useState(null) // 'delete' | 'leave' | null
+  const [confirmAction, setConfirmAction] = useState(null) // 'delete' | 'leave' | 'transfer' | null
+  const [transferTarget, setTransferTarget] = useState(null)
 
   const hasChanges = name.trim() !== group.name || currency !== group.currency
 
@@ -167,6 +172,45 @@ export default function GroupSettingsPanel({ group, isAdmin, onUpdate, onDelete,
 
         <div className="h-px bg-osps-gray-light my-3" />
 
+        {/* Transfer ownership (owner only) */}
+        {isOwner && members.filter(m => m.id !== currentUserId).length > 0 && (
+          <>
+            <div className="py-3 px-1">
+              <p className="text-sm font-display font-semibold text-osps-black mb-1">
+                Transfer ownership
+              </p>
+              <p className="text-xs text-osps-gray font-body mb-3">
+                Make another member the group owner. You'll remain an admin.
+              </p>
+              <div className="flex gap-2">
+                <select
+                  value={transferTarget || ''}
+                  onChange={e => setTransferTarget(e.target.value || null)}
+                  className="input flex-1 text-sm"
+                >
+                  <option value="">Select a member</option>
+                  {members
+                    .filter(m => m.id !== currentUserId)
+                    .map(m => (
+                      <option key={m.id} value={m.id}>{m.display_name}</option>
+                    ))
+                  }
+                </select>
+                <button
+                  onClick={() => transferTarget && setConfirmAction('transfer')}
+                  disabled={!transferTarget}
+                  className="text-sm font-display font-semibold text-osps-yellow border border-osps-yellow/30
+                             px-4 py-2 rounded-xl hover:bg-osps-yellow/5 active:scale-[0.98] transition-all
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Transfer
+                </button>
+              </div>
+            </div>
+            <div className="h-px bg-osps-gray-light my-3" />
+          </>
+        )}
+
         {/* Leave group */}
         <button
           onClick={() => setConfirmAction('leave')}
@@ -178,8 +222,8 @@ export default function GroupSettingsPanel({ group, isAdmin, onUpdate, onDelete,
           </p>
         </button>
 
-        {/* Delete group (admin only) */}
-        {isAdmin && (
+        {/* Delete group (owner only) */}
+        {isOwner && (
           <>
             <div className="h-px bg-osps-gray-light my-3" />
             <button
@@ -213,6 +257,17 @@ export default function GroupSettingsPanel({ group, isAdmin, onUpdate, onDelete,
             confirmLabel="Leave"
             danger={false}
             onConfirm={() => { setConfirmAction(null); onLeave() }}
+            onCancel={() => setConfirmAction(null)}
+          />
+        )}
+
+        {confirmAction === 'transfer' && transferTarget && (
+          <ConfirmDialog
+            title="Transfer ownership?"
+            message={`${members.find(m => m.id === transferTarget)?.display_name} will become the group owner. You'll remain as an admin. Only the new owner can transfer ownership again or delete the group.`}
+            confirmLabel="Transfer"
+            danger={false}
+            onConfirm={() => { setConfirmAction(null); onTransferOwnership(transferTarget); setTransferTarget(null) }}
             onCancel={() => setConfirmAction(null)}
           />
         )}
