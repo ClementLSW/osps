@@ -64,6 +64,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/auth/account"
+  to = "/.netlify/functions/auth-account"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/change-password"
+  to = "/.netlify/functions/auth-change-password"
+  status = 200
+
+[[redirects]]
+  from = "/api/auth/delete-account"
+  to = "/.netlify/functions/auth-delete-account"
+  status = 200
+
+[[redirects]]
   from = "/api/parse-receipt"
   to = "/.netlify/functions/parse-receipt"
   status = 200

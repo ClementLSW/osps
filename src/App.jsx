@@ -11,6 +11,7 @@ import JoinGroup from '@/pages/JoinGroup'
 import AuthConfirm from '@/pages/AuthConfirm'
 import ForgotPassword from '@/pages/ForgotPassword'
 import ResetPassword from '@/pages/ResetPassword'
+import Settings from '@/pages/Settings'
 import PrivacyPolicy from '@/pages/PrivacyPolicy'
 import TermsOfService from '@/pages/TermsOfService'
 
@@ -42,6 +43,7 @@ function AppRoutes() {
       {/* Protected */}
       <Route element={<AuthGuard />}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/create" element={<CreateGroup />} />
         <Route path="/group/:groupId" element={<GroupDetail />} />
         <Route path="/group/:groupId/add" element={<AddExpense />} />

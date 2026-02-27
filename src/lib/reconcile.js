@@ -25,9 +25,12 @@ export function computeNetBalances(expenses, settlements = []) {
   }
 
   // Process expenses
+  // Skip null user IDs — these are from deleted accounts.
+  // Effect: deleted user's debts are forgiven, their credits are zeroed.
   for (const expense of expenses) {
+    if (!expense.paid_by) continue // payer was deleted
     for (const split of expense.splits) {
-      // The payer is owed money by the split participant
+      if (!split.user_id) continue // participant was deleted
       if (split.user_id !== expense.paid_by) {
         addBalance(expense.paid_by, split.owed_amount)   // creditor
         addBalance(split.user_id, -split.owed_amount)    // debtor
@@ -37,6 +40,7 @@ export function computeNetBalances(expenses, settlements = []) {
 
   // Process existing settlements (reduce outstanding debts)
   for (const settlement of settlements) {
+    if (!settlement.paid_by || !settlement.paid_to) continue // party was deleted
     addBalance(settlement.paid_by, settlement.amount)   // paid off debt
     addBalance(settlement.paid_to, -settlement.amount)  // received payment
   }

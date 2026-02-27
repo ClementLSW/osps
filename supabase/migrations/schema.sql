@@ -51,7 +51,7 @@ create table public.groups (
   name         text not null,
   description  text,
   currency     text not null default 'SGD',
-  created_by   uuid not null references public.profiles(id),
+  created_by   uuid references public.profiles(id) on delete set null,
   invite_code  text unique not null default encode(gen_random_bytes(6), 'hex'),
   is_settled   boolean default false,
   type         text not null default 'ongoing' check (type in ('ongoing', 'trip', 'event')),
@@ -70,7 +70,6 @@ create table public.group_members (
   role      text not null default 'member' check (role in ('admin', 'member')),
   joined_at timestamptz default now(),
   primary key (group_id, user_id)
-);
 
 -- Expenses — a single payment made by one member on behalf of the group.
 -- total_amount is always in the group's home currency. For foreign currency
@@ -82,7 +81,7 @@ create table public.group_members (
 create table public.expenses (
   id            uuid primary key default gen_random_uuid(),
   group_id      uuid not null references public.groups(id) on delete cascade,
-  paid_by       uuid not null references public.profiles(id),
+  paid_by       uuid references public.profiles(id) on delete set null,
   title         text not null,
   total_amount  numeric(12,2) not null check (total_amount > 0),
   currency      text not null default 'SGD',
@@ -97,9 +96,9 @@ create table public.expenses (
   exchange_rate     numeric(18,10),
   exchange_rate_at  timestamptz,
   confirmed_at  timestamptz,
-  confirmed_by  uuid references public.profiles(id),
+  confirmed_by  uuid references public.profiles(id) on delete set null,
   created_at    timestamptz default now(),
-  created_by    uuid not null references public.profiles(id)
+  created_by    uuid references public.profiles(id) on delete set null
 );
 
 -- Expense splits — how much each member owes for a given expense.
@@ -109,7 +108,7 @@ create table public.expenses (
 create table public.expense_splits (
   id          uuid primary key default gen_random_uuid(),
   expense_id  uuid not null references public.expenses(id) on delete cascade,
-  user_id     uuid not null references public.profiles(id),
+  user_id     uuid references public.profiles(id) on delete set null,
   owed_amount numeric(12,2) not null,
   unique (expense_id, user_id)
 );
@@ -132,7 +131,7 @@ create table public.line_items (
 -- share_count allows unequal splits per item (e.g. "I had 2 of those").
 create table public.line_item_assignments (
   line_item_id uuid not null references public.line_items(id) on delete cascade,
-  user_id      uuid not null references public.profiles(id),
+  user_id      uuid not null references public.profiles(id) on delete cascade,
   share_count  int not null default 1,
   primary key (line_item_id, user_id)
 );
@@ -143,8 +142,8 @@ create table public.line_item_assignments (
 create table public.settlements (
   id         uuid primary key default gen_random_uuid(),
   group_id   uuid not null references public.groups(id) on delete cascade,
-  paid_by    uuid not null references public.profiles(id),
-  paid_to    uuid not null references public.profiles(id),
+  paid_by    uuid references public.profiles(id) on delete set null,
+  paid_to    uuid references public.profiles(id) on delete set null,
   amount     numeric(12,2) not null check (amount > 0),
   settled_at timestamptz default now(),
   note       text
@@ -160,7 +159,7 @@ create table public.pending_invites (
   id         uuid primary key default gen_random_uuid(),
   email      text not null,
   group_id   uuid not null references public.groups(id) on delete cascade,
-  invited_by uuid not null references public.profiles(id),
+  invited_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz default now()
 );
 

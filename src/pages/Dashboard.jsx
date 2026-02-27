@@ -55,9 +55,14 @@ export default function Dashboard() {
           <h1 className="text-2xl font-display font-bold text-osps-red">O$P$</h1>
           <p className="text-sm text-osps-gray font-body">Hi, {profile?.display_name}</p>
         </div>
-        <button onClick={signOut} className="btn-ghost text-sm">
-          Sign out
-        </button>
+        <div className="flex items-center gap-1">
+          <Link to="/settings" className="btn-ghost text-sm px-3">
+            ⚙️
+          </Link>
+          <button onClick={signOut} className="btn-ghost text-sm">
+            Sign out
+          </button>
+        </div>
       </div>
 
       {/* Create group */}

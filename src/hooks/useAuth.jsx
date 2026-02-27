@@ -161,6 +161,10 @@ export function AuthProvider({ children }) {
     return result
   }
 
+  async function refreshProfile() {
+    if (user?.id) await fetchProfile(user.id)
+  }
+
   const value = {
     user,
     profile,
@@ -169,6 +173,7 @@ export function AuthProvider({ children }) {
     signInWithEmail,
     signUpWithEmail,
     signOut,
+    refreshProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

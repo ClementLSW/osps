@@ -170,6 +170,7 @@ export default function GroupDetail() {
   }
 
   function getMemberName(userId) {
+    if (!userId) return 'Deleted user'
     return members.find(m => m.id === userId)?.display_name || 'Unknown'
   }
 
@@ -271,8 +272,8 @@ export default function GroupDetail() {
           </h2>
           <div className="space-y-2">
             {transactions.map((t, i) => {
-              const fromName = members.find(m => m.id === t.from)?.display_name || 'Unknown'
-              const toName = members.find(m => m.id === t.to)?.display_name || 'Unknown'
+              const fromName = members.find(m => m.id === t.from)?.display_name || 'Deleted user'
+              const toName = members.find(m => m.id === t.to)?.display_name || 'Deleted user'
               const isConfirming = settlingIndex === i
               return (
                 <div key={i} className="card flex items-center justify-between py-3">
@@ -345,7 +346,7 @@ export default function GroupDetail() {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-sm truncate">{expense.title}</p>
                     <p className="text-xs text-osps-gray mt-0.5">
-                      Paid by {expense.payer?.display_name} · {formatRelativeDate(expense.expense_date)}
+                      Paid by {expense.payer?.display_name || 'Deleted user'} · {formatRelativeDate(expense.expense_date)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 ml-3 shrink-0">
