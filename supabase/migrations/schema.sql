@@ -331,12 +331,16 @@ create policy "Members can create splits"
     )
   );
 
-create policy "Members can delete splits"
+create policy "Creator or admin can delete splits"
   on public.expense_splits for delete
   using (
     expense_id in (
       select id from public.expenses
-      where created_by = (select auth.uid()) or public.is_group_member(group_id)
+      where created_by = (select auth.uid())
+      or group_id in (
+        select group_id from public.group_members
+        where user_id = (select auth.uid()) and role = 'admin'
+      )
     )
   );
 
@@ -359,12 +363,16 @@ create policy "Members can create line items"
     )
   );
 
-create policy "Members can delete line items"
+create policy "Creator or admin can delete line items"
   on public.line_items for delete
   using (
     expense_id in (
       select id from public.expenses
-      where created_by = (select auth.uid()) or public.is_group_member(group_id)
+      where created_by = (select auth.uid())
+      or group_id in (
+        select group_id from public.group_members
+        where user_id = (select auth.uid()) and role = 'admin'
+      )
     )
   );
 
