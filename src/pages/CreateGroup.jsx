@@ -1,19 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getSupabase } from '@/lib/supabase'
+import { CURRENCIES } from '@/lib/currencies'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
-
-const CURRENCIES = [
-  { code: 'SGD', flag: '🇸🇬' },
-  { code: 'USD', flag: '🇺🇸' },
-  { code: 'MYR', flag: '🇲🇾' },
-  { code: 'THB', flag: '🇹🇭' },
-  { code: 'JPY', flag: '🇯🇵' },
-  { code: 'EUR', flag: '🇪🇺' },
-  { code: 'KRW', flag: '🇰🇷' },
-  { code: 'IDR', flag: '🇮🇩' },
-]
 
 const PRESETS = [
   { emoji: '🏠', label: 'Household', type: 'ongoing' },
@@ -300,15 +290,6 @@ export default function CreateGroup() {
         )}
       </div>
 
-      <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeUp {
-          animation: fadeUp 0.35s ease-out;
-        }
-      `}</style>
     </div>
   )
 }

@@ -1,17 +1,7 @@
 import { useState } from 'react'
 import { useScrollLock } from '@/hooks/useScrollLock'
+import { CURRENCIES } from '@/lib/currencies'
 import ConfirmDialog from '@/components/ConfirmDialog'
-
-const CURRENCIES = [
-  { code: 'SGD', flag: '🇸🇬' },
-  { code: 'USD', flag: '🇺🇸' },
-  { code: 'MYR', flag: '🇲🇾' },
-  { code: 'THB', flag: '🇹🇭' },
-  { code: 'JPY', flag: '🇯🇵' },
-  { code: 'EUR', flag: '🇪🇺' },
-  { code: 'KRW', flag: '🇰🇷' },
-  { code: 'IDR', flag: '🇮🇩' },
-]
 
 /**
  * GroupSettingsPanel — slide-up panel for group management.
@@ -226,14 +216,6 @@ export default function GroupSettingsPanel({ group, isAdmin, onUpdate, onDelete,
             onCancel={() => setConfirmAction(null)}
           />
         )}
-
-        <style>{`
-          @keyframes slideUp {
-            from { opacity: 0; transform: translateY(24px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .animate-slideUp { animation: slideUp 0.25s ease-out; }
-        `}</style>
       </div>
     </div>
   )

@@ -3,20 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { splitEqual, splitExact, splitPercentage, splitShares, splitLineItems } from '@/lib/splitCalculators'
+import { CURRENCIES } from '@/lib/currencies'
 import { formatCurrency } from '@/lib/formatCurrency'
 import { fetchExchangeRate } from '@/lib/exchangeRate'
 import toast from 'react-hot-toast'
-
-const CURRENCIES = [
-  { code: 'SGD', flag: '🇸🇬' },
-  { code: 'USD', flag: '🇺🇸' },
-  { code: 'MYR', flag: '🇲🇾' },
-  { code: 'THB', flag: '🇹🇭' },
-  { code: 'JPY', flag: '🇯🇵' },
-  { code: 'EUR', flag: '🇪🇺' },
-  { code: 'KRW', flag: '🇰🇷' },
-  { code: 'IDR', flag: '🇮🇩' },
-]
 
 const SPLIT_MODES = [
   { id: 'equal', label: 'Equal', icon: '÷' },
