@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { useBalances } from '@/hooks/useBalances'
-import { formatCurrency, formatBalance } from '@/lib/formatCurrency'
+import { formatCurrency, formatBalance, formatCompact } from '@/lib/formatCurrency'
 import { formatRelativeDate } from '@/lib/formatDate'
 import InviteModal from '@/components/groups/InviteModal'
 import GroupSettingsPanel from '@/components/groups/GroupSettingsPanel'
@@ -352,6 +352,11 @@ export default function GroupDetail() {
                     <span className="currency font-semibold">
                       {formatCurrency(expense.total_amount, expense.currency)}
                     </span>
+                    {expense.original_currency && expense.original_currency !== expense.currency && (
+                      <span className="text-xs text-osps-gray font-normal">
+                        · {formatCompact(expense.original_amount, expense.original_currency)}
+                      </span>
+                    )}
                     <span className={`text-sm font-display transition-all duration-200 ${isExpanded ? 'text-osps-black font-bold' : 'text-osps-gray/40 font-medium'}`}>
                       {isExpanded ? '✕' : '+'}
                     </span>
@@ -361,6 +366,20 @@ export default function GroupDetail() {
                 {/* Expanded detail */}
                 {isExpanded && (
                   <div className="border-t border-osps-gray-light pt-3 pb-1 animate-fadeIn">
+                    {/* Exchange rate breakdown (foreign currency only) */}
+                    {expense.original_currency && expense.original_currency !== expense.currency && (
+                      <div className="mb-3 bg-osps-cream/50 rounded-lg px-3 py-2 space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-osps-gray">Original</span>
+                          <span className="font-mono">{formatCurrency(expense.original_amount, expense.original_currency)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-osps-gray">Rate</span>
+                          <span className="font-mono text-xs">1 {expense.original_currency} = {expense.exchange_rate} {expense.currency}</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Split breakdown */}
                     <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider mb-2">
                       Split ({expense.split_mode})
