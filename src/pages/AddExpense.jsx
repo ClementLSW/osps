@@ -4,7 +4,19 @@ import { getSupabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { splitEqual, splitExact, splitPercentage, splitShares, splitLineItems } from '@/lib/splitCalculators'
 import { formatCurrency } from '@/lib/formatCurrency'
+import { fetchExchangeRate } from '@/lib/exchangeRate'
 import toast from 'react-hot-toast'
+
+const CURRENCIES = [
+  { code: 'SGD', flag: '🇸🇬' },
+  { code: 'USD', flag: '🇺🇸' },
+  { code: 'MYR', flag: '🇲🇾' },
+  { code: 'THB', flag: '🇹🇭' },
+  { code: 'JPY', flag: '🇯🇵' },
+  { code: 'EUR', flag: '🇪🇺' },
+  { code: 'KRW', flag: '🇰🇷' },
+  { code: 'IDR', flag: '🇮🇩' },
+]
 
 const SPLIT_MODES = [
   { id: 'equal', label: 'Equal', icon: '÷' },
@@ -47,9 +59,44 @@ export default function AddExpense() {
   const [scanning, setScanning] = useState(false)
   const [receiptImage, setReceiptImage] = useState(null) // base64 data URL
 
+  // Multi-currency state
+  const [expenseCurrency, setExpenseCurrency] = useState(null) // null until group loads → defaults to group currency
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10))
+  const [exchangeRate, setExchangeRate] = useState(null) // { rate, date, fetchedAt }
+  const [rateLoading, setRateLoading] = useState(false)
+  const [manualRate, setManualRate] = useState(false) // user overrode the rate
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false)
+
   useEffect(() => {
     loadGroupData()
   }, [groupId])
+
+  // Fetch exchange rate when currency or date changes
+  useEffect(() => {
+    const groupCurrency = group?.currency || 'SGD'
+    if (!expenseCurrency || expenseCurrency === groupCurrency || manualRate) return
+
+    let cancelled = false
+    async function fetchRate() {
+      setRateLoading(true)
+      try {
+        const isToday = expenseDate === new Date().toISOString().slice(0, 10)
+        const result = await fetchExchangeRate(
+          expenseCurrency,
+          groupCurrency,
+          isToday ? undefined : expenseDate
+        )
+        if (!cancelled) setExchangeRate(result)
+      } catch (err) {
+        console.error('Exchange rate fetch failed:', err)
+        if (!cancelled) toast.error('Could not fetch exchange rate')
+      } finally {
+        if (!cancelled) setRateLoading(false)
+      }
+    }
+    fetchRate()
+    return () => { cancelled = true }
+  }, [expenseCurrency, expenseDate, group?.currency, manualRate])
 
   async function loadGroupData() {
     const { data: groupData } = await getSupabase()
@@ -63,6 +110,7 @@ export default function AddExpense() {
     const memberList = memberData?.map(m => m.profiles) || []
     setGroup(groupData)
     setMembers(memberList)
+    if (!expenseCurrency) setExpenseCurrency(groupData?.currency || 'SGD')
 
     // Initialize defaults
     const defaultShares = {}
@@ -110,6 +158,19 @@ export default function AddExpense() {
     setPaidBy(expense.paid_by)
     setSplitMode(expense.split_mode)
     setNotes(expense.notes || '')
+    if (expense.expense_date) setExpenseDate(expense.expense_date)
+
+    // Pre-populate multi-currency fields
+    if (expense.original_currency && expense.original_currency !== group?.currency) {
+      setExpenseCurrency(expense.original_currency)
+      setTotalAmount(String(expense.original_amount)) // show original currency amount in form
+      setExchangeRate({
+        rate: parseFloat(expense.exchange_rate),
+        date: expense.exchange_rate_at?.slice(0, 10),
+        fetchedAt: expense.exchange_rate_at,
+      })
+      setManualRate(true) // don't auto-refetch, keep the saved rate
+    }
 
     // Pre-populate split-mode-specific fields
     const splitUserIds = expense.splits?.map(s => s.user_id) || []
@@ -193,8 +254,19 @@ export default function AddExpense() {
     )
   }
 
+  // Is this a foreign currency expense?
+  const isForeignCurrency = expenseCurrency && group && expenseCurrency !== group.currency
+
+  // Convert entered amount to group currency
+  function getConvertedTotal() {
+    const entered = parseFloat(totalAmount)
+    if (!entered || entered <= 0) return 0
+    if (!isForeignCurrency || !exchangeRate?.rate) return entered
+    return Math.round(entered * exchangeRate.rate * 100) / 100
+  }
+
   function computeSplits() {
-    const total = parseFloat(totalAmount)
+    const total = getConvertedTotal()
     if (!total || total <= 0) return { splits: [], error: 'Enter a valid amount' }
 
     switch (splitMode) {
@@ -240,12 +312,18 @@ export default function AddExpense() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    const total = parseFloat(totalAmount)
-    if (!title.trim() || !total || total <= 0) {
+    const enteredAmount = parseFloat(totalAmount)
+    if (!title.trim() || !enteredAmount || enteredAmount <= 0) {
       toast.error('Fill in title and amount')
       return
     }
 
+    if (isForeignCurrency && !exchangeRate?.rate) {
+      toast.error('Waiting for exchange rate')
+      return
+    }
+
+    const convertedTotal = getConvertedTotal()
     const { splits, error } = computeSplits()
     if (error) {
       toast.error(error)
@@ -255,26 +333,37 @@ export default function AddExpense() {
     setSaving(true)
 
     if (isEdit) {
-      await handleUpdate(total, splits)
+      await handleUpdate(convertedTotal, enteredAmount, splits)
     } else {
-      await handleCreate(total, splits)
+      await handleCreate(convertedTotal, enteredAmount, splits)
     }
   }
 
-  async function handleCreate(total, splits) {
-    // Insert expense
+  async function handleCreate(convertedTotal, enteredAmount, splits) {
+    // Build expense record
+    const expenseRecord = {
+      group_id: groupId,
+      paid_by: paidBy,
+      title: title.trim(),
+      total_amount: convertedTotal,
+      currency: group?.currency || 'SGD',
+      split_mode: splitMode,
+      notes: notes.trim() || null,
+      expense_date: expenseDate,
+      created_by: profile.id,
+    }
+
+    // Add multi-currency fields if foreign
+    if (isForeignCurrency && exchangeRate?.rate) {
+      expenseRecord.original_currency = expenseCurrency
+      expenseRecord.original_amount = enteredAmount
+      expenseRecord.exchange_rate = exchangeRate.rate
+      expenseRecord.exchange_rate_at = exchangeRate.fetchedAt
+    }
+
     const { data: expense, error: expError } = await getSupabase()
       .from('expenses')
-      .insert({
-        group_id: groupId,
-        paid_by: paidBy,
-        title: title.trim(),
-        total_amount: total,
-        currency: group?.currency || 'SGD',
-        split_mode: splitMode,
-        notes: notes.trim() || null,
-        created_by: profile.id,
-      })
+      .insert(expenseRecord)
       .select()
       .single()
 
@@ -316,17 +405,33 @@ export default function AddExpense() {
     navigate(`/group/${groupId}`)
   }
 
-  async function handleUpdate(total, splits) {
-    // Update the expense record
+  async function handleUpdate(convertedTotal, enteredAmount, splits) {
+    // Build update record
+    const updateRecord = {
+      paid_by: paidBy,
+      title: title.trim(),
+      total_amount: convertedTotal,
+      split_mode: splitMode,
+      notes: notes.trim() || null,
+      expense_date: expenseDate,
+    }
+
+    // Add or clear multi-currency fields
+    if (isForeignCurrency && exchangeRate?.rate) {
+      updateRecord.original_currency = expenseCurrency
+      updateRecord.original_amount = enteredAmount
+      updateRecord.exchange_rate = exchangeRate.rate
+      updateRecord.exchange_rate_at = exchangeRate.fetchedAt
+    } else {
+      updateRecord.original_currency = null
+      updateRecord.original_amount = null
+      updateRecord.exchange_rate = null
+      updateRecord.exchange_rate_at = null
+    }
+
     const { error: expError } = await getSupabase()
       .from('expenses')
-      .update({
-        paid_by: paidBy,
-        title: title.trim(),
-        total_amount: total,
-        split_mode: splitMode,
-        notes: notes.trim() || null,
-      })
+      .update(updateRecord)
       .eq('id', editId)
 
     if (expError) {
@@ -513,6 +618,15 @@ export default function AddExpense() {
       if (data.merchant) setTitle(data.merchant)
       if (data.total) setTotalAmount(String(data.total))
 
+      // Set currency from OCR (triggers exchange rate fetch via effect)
+      if (data.currency) {
+        setManualRate(false) // allow auto-fetch
+        setExpenseCurrency(data.currency)
+      }
+
+      // Set date from OCR (triggers historical rate fetch if backdated)
+      if (data.date) setExpenseDate(data.date)
+
       if (data.items?.length > 0) {
         setSplitMode('line_item')
         setLineItems(
@@ -623,19 +737,109 @@ export default function AddExpense() {
           required
         />
 
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-osps-gray font-mono">$</span>
-          <input
-            type="number"
-            placeholder="0.00"
-            value={totalAmount}
-            onChange={e => setTotalAmount(e.target.value)}
-            className="input pl-8 text-lg font-mono"
-            step="0.01"
-            min="0"
-            required
-          />
+        <div className="relative flex gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-osps-gray font-mono text-sm">
+              {CURRENCIES.find(c => c.code === expenseCurrency)?.flag || '💰'}
+            </span>
+            <input
+              type="number"
+              placeholder="0.00"
+              value={totalAmount}
+              onChange={e => setTotalAmount(e.target.value)}
+              className="input pl-10 text-lg font-mono"
+              step="0.01"
+              min="0"
+              required
+            />
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowCurrencyPicker(!showCurrencyPicker)}
+              className="input h-full px-3 flex items-center gap-1 text-sm font-display font-medium whitespace-nowrap"
+            >
+              {expenseCurrency || 'SGD'}
+              <span className="text-osps-gray text-xs">▼</span>
+            </button>
+            {showCurrencyPicker && (
+              <div className="absolute top-full mt-1 right-0 bg-white rounded-xl border border-osps-gray-light p-1.5 z-10 shadow-lg max-h-[200px] overflow-y-auto w-28">
+                {CURRENCIES.map(c => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => {
+                      setManualRate(false)
+                      setExpenseCurrency(c.code)
+                      setShowCurrencyPicker(false)
+                      if (c.code === group?.currency) setExchangeRate(null)
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-sm text-left transition-colors
+                      ${expenseCurrency === c.code ? 'bg-osps-cream font-semibold' : 'hover:bg-osps-cream/50'}`}
+                  >
+                    <span>{c.flag}</span>
+                    <span>{c.code}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Exchange rate display (foreign currency only) */}
+        {isForeignCurrency && (
+          <div className="bg-osps-cream/50 rounded-xl px-4 py-3 space-y-1 text-sm">
+            {rateLoading ? (
+              <div className="flex items-center gap-2 text-osps-gray">
+                <span className="animate-spin inline-block w-3 h-3 border-2 border-osps-gray border-t-transparent rounded-full" />
+                Fetching rate...
+              </div>
+            ) : exchangeRate?.rate ? (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="text-osps-gray">Converted</span>
+                  <span className="font-mono font-semibold">
+                    {formatCurrency(getConvertedTotal(), group?.currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-osps-gray">Rate</span>
+                  {manualRate ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-osps-gray">1 {expenseCurrency} =</span>
+                      <input
+                        type="number"
+                        value={exchangeRate.rate}
+                        onChange={e => setExchangeRate(prev => ({ ...prev, rate: parseFloat(e.target.value) || 0 }))}
+                        className="w-28 px-2 py-0.5 rounded border border-osps-gray-light text-xs font-mono text-right"
+                        step="any"
+                      />
+                      <span className="text-xs text-osps-gray">{group?.currency}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setManualRate(false) }}
+                        className="text-xs text-osps-red ml-1"
+                      >
+                        ↺
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setManualRate(true)}
+                      className="font-mono text-xs hover:text-osps-red transition-colors"
+                      title="Click to override"
+                    >
+                      1 {expenseCurrency} = {exchangeRate.rate} {group?.currency} ✎
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <span className="text-osps-gray">Could not fetch rate</span>
+            )}
+          </div>
+        )}
 
         {/* Paid by */}
         <div>
@@ -649,6 +853,20 @@ export default function AddExpense() {
               <option key={m.id} value={m.id}>{m.display_name}</option>
             ))}
           </select>
+        </div>
+
+        {/* Date */}
+        <div>
+          <label className="text-sm text-osps-gray font-medium block mb-2">Date</label>
+          <input
+            type="date"
+            value={expenseDate}
+            onChange={e => {
+              setExpenseDate(e.target.value)
+              if (isForeignCurrency) setManualRate(false) // re-fetch rate for new date
+            }}
+            className="input text-sm"
+          />
         </div>
 
         {/* Notes */}
@@ -717,12 +935,12 @@ export default function AddExpense() {
                 <div key={id} className="flex items-center gap-3">
                   <span className="text-sm flex-1">{member?.display_name}</span>
                   <div className="relative w-32">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-sm font-mono">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-xs font-mono">{expenseCurrency || 'SGD'}</span>
                     <input
                       type="number"
                       value={exactAmounts[id] || ''}
                       onChange={e => setExactAmounts({ ...exactAmounts, [id]: e.target.value })}
-                      className="input pl-7 text-sm font-mono"
+                      className="input pl-12 text-sm font-mono"
                       step="0.01"
                       placeholder="0.00"
                     />
@@ -800,7 +1018,7 @@ export default function AddExpense() {
                     className="input text-sm flex-1"
                   />
                   <div className="relative w-28">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-sm font-mono">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-xs font-mono">{expenseCurrency || 'SGD'}</span>
                     <input
                       type="number"
                       placeholder="0.00"
@@ -810,7 +1028,7 @@ export default function AddExpense() {
                         updated[idx].amount = e.target.value
                         setLineItems(updated)
                       }}
-                      className="input pl-7 text-sm font-mono"
+                      className="input pl-12 text-sm font-mono"
                       step="0.01"
                     />
                   </div>
@@ -853,7 +1071,9 @@ export default function AddExpense() {
         {/* Preview */}
         {totalAmount && preview.splits?.length > 0 && (
           <div className="bg-osps-black/5 rounded-xl p-4">
-            <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider mb-2">Preview</p>
+            <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider mb-2">
+              Preview {isForeignCurrency ? `(in ${group?.currency})` : ''}
+            </p>
             {preview.splits.map(s => {
               const member = members.find(m => m.id === s.user_id)
               return (
@@ -869,7 +1089,7 @@ export default function AddExpense() {
           </div>
         )}
 
-        <button type="submit" className="btn-primary w-full" disabled={saving}>
+        <button type="submit" className="btn-primary w-full" disabled={saving || (isForeignCurrency && rateLoading)}>
           {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Expense'}
         </button>
       </form>

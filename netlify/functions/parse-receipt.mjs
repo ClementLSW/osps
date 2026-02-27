@@ -38,6 +38,7 @@ OUTPUT FORMAT:
 {
   "merchant": "Restaurant Name",
   "currency": "SGD",
+  "date": "2026-03-15",
   "items": [
     {"name": "Item name", "amount": 15.90, "quantity": 1},
     {"name": "Another item", "amount": 12.50, "quantity": 2}
@@ -55,9 +56,12 @@ NOTES:
 - If tax, service_charge, delivery_fee, or discount is not listed, omit those fields
 - Discounts should be negative numbers (e.g. -5.00)
 - Delivery fees and platform fees should be combined into delivery_fee
+- Detect currency from symbols or context: Rp → IDR, ¥ → JPY, ฿ → THB, RM → MYR, $ with Singapore context → SGD
+- If "$" is ambiguous, prefer the country context from merchant name or address
+- Extract the transaction date if visible (ISO format YYYY-MM-DD). Omit if not found.
 - If the receipt is from Singapore, look for 9% GST and 10% service charge
-- Handle English, Chinese, and Malay text on receipts
-- For digital orders (Grab, foodpanda, etc), capture delivery and platform fees`
+- Handle English, Chinese, Malay, and Indonesian (Bahasa) text on receipts
+- For digital orders (Grab, foodpanda, GoFood, etc), capture delivery and platform fees`
 
 export default async (request) => {
   const openrouterKey = process.env.OPENROUTER_API_KEY
@@ -236,6 +240,7 @@ function normalizeItems(data) {
   return {
     merchant: data.merchant || '',
     currency: data.currency || null,
+    date: data.date || null,
     items: normalizedItems,
     total: Math.round(total * 100) / 100,
     raw: {
