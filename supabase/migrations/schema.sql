@@ -450,6 +450,23 @@ create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Auto-add the group creator as an admin member when a group is created.
+-- Eliminates the race condition of separate insert-group + insert-member
+-- queries from the client. Works for any code path that creates a group.
+create or replace function public.handle_new_group()
+returns trigger as $$
+begin
+  insert into public.group_members (group_id, user_id, role)
+  values (new.id, new.created_by, 'admin');
+  return new;
+end;
+$$ language plpgsql security definer
+set search_path = '';
+
+create or replace trigger on_group_created
+  after insert on public.groups
+  for each row execute function public.handle_new_group();
+
 -- Look up a user's auth.users ID by email address.
 -- Used by the smart invite flow (auth-invite.mjs) to check if an
 -- invited email belongs to an existing user. Security definer allows

@@ -63,22 +63,6 @@ export default function CreateGroup() {
       return
     }
 
-    // Add creator as admin
-    const { error: memberError } = await getSupabase()
-      .from('group_members')
-      .insert({
-        group_id: group.id,
-        user_id: profile.id,
-        role: 'admin',
-      })
-
-    if (memberError) {
-      toast.error('Failed to add you to group')
-      console.error(memberError)
-      setCreating(false)
-      return
-    }
-
     toast.success('Group created!')
     navigate(`/group/${group.id}`)
   }
