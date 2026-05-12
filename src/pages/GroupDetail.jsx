@@ -27,6 +27,7 @@ export default function GroupDetail() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [receiptUrls, setReceiptUrls] = useState({}) // expenseId → signed URL
   const [memberAction, setMemberAction] = useState(null) // { type: 'remove'|'promote'|'demote', member }
+  const [showSettlements, setShowSettlements] = useState(false)
 
   const { balances, transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
@@ -534,6 +535,57 @@ export default function GroupDetail() {
           })}
         </div>
       )}
+
+      {/* Settlements (collapsible, closed by default) */}
+      {(() => {
+        // Belt-and-suspenders: enforce group scope at render time even though
+        // the fetch already filters by group_id. Prevents any future bug
+        // where settlements from another group could leak into this view.
+        const groupSettlements = settlements
+          .filter(s => s.group_id === groupId)
+          .sort((a, b) => new Date(b.settled_at) - new Date(a.settled_at))
+
+        if (groupSettlements.length === 0) return null
+
+        return (
+          <div className="mt-8">
+            <button
+              onClick={() => setShowSettlements(v => !v)}
+              className="w-full flex items-center justify-between mb-3 group"
+              aria-expanded={showSettlements}
+            >
+              <h2 className="text-sm font-display font-semibold text-osps-gray uppercase tracking-wider">
+                Settlements ({groupSettlements.length})
+              </h2>
+              <span className={`text-sm font-display transition-all duration-200 ${showSettlements ? 'text-osps-black font-bold' : 'text-osps-gray/40 font-medium'}`}>
+                {showSettlements ? '✕' : '+'}
+              </span>
+            </button>
+
+            {showSettlements && (
+              <div className="space-y-2 animate-fadeIn">
+                {groupSettlements.map(s => (
+                  <div key={s.id} className="card flex items-center justify-between py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm">
+                        <span className="font-medium">{getMemberName(s.paid_by)}</span>
+                        <span className="text-osps-gray"> paid </span>
+                        <span className="font-medium">{getMemberName(s.paid_to)}</span>
+                      </p>
+                      <p className="text-xs text-osps-gray mt-0.5">
+                        {formatRelativeDate(s.settled_at)}
+                      </p>
+                    </div>
+                    <span className="currency font-semibold text-osps-green ml-3 shrink-0">
+                      {formatCurrency(s.amount, group.currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Members */}
       <h2 className="text-sm font-display font-semibold text-osps-gray uppercase tracking-wider mb-3 mt-8">
