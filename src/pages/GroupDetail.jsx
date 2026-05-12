@@ -23,6 +23,7 @@ export default function GroupDetail() {
   const [showInvite, setShowInvite] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settlingIndex, setSettlingIndex] = useState(null)
+  const [settlingAmount, setSettlingAmount] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [receiptUrls, setReceiptUrls] = useState({}) // expenseId → signed URL
@@ -82,14 +83,25 @@ export default function GroupDetail() {
     setLoading(false)
   }
 
-  async function recordSettlement(transaction) {
+  async function recordSettlement(transaction, amountOverride) {
+    // Parse user input; fall back to algorithm's suggested amount when blank.
+    let amount = transaction.amount
+    if (amountOverride !== undefined && amountOverride !== '') {
+      const parsed = parseFloat(amountOverride)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        toast.error('Enter a valid amount greater than 0')
+        return
+      }
+      amount = Math.round(parsed * 100) / 100 // round to 2 dp (matches DB precision)
+    }
+
     const { error } = await getSupabase()
       .from('settlements')
       .insert({
         group_id: groupId,
         paid_by: transaction.from,
         paid_to: transaction.to,
-        amount: transaction.amount,
+        amount,
       })
 
     if (error) {
@@ -98,6 +110,7 @@ export default function GroupDetail() {
     } else {
       toast.success('Payment recorded!')
       setSettlingIndex(null)
+      setSettlingAmount('')
       loadGroup()
     }
   }
@@ -342,35 +355,84 @@ export default function GroupDetail() {
               const fromName = members.find(m => m.id === t.from)?.display_name || 'Deleted user'
               const toName = members.find(m => m.id === t.to)?.display_name || 'Deleted user'
               const isConfirming = settlingIndex === i
+              const isOwnedByMe = t.from === profile?.id
+
               return (
-                <div key={i} className="card flex items-center justify-between py-3">
-                  <span className="text-sm">
-                    <span className="font-medium">{fromName}</span>
-                    <span className="text-osps-gray"> pays </span>
-                    <span className="font-medium">{toName}</span>
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="currency text-osps-red font-semibold">
-                      {formatCurrency(t.amount, group.currency)}
+                <div key={i} className="card py-3">
+                  {/* Top row: who pays who, always visible */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">
+                      <span className="font-medium">{fromName}</span>
+                      <span className="text-osps-gray"> pays </span>
+                      <span className="font-medium">{toName}</span>
                     </span>
-                    {t.from === profile?.id && (isConfirming ? (
+                    <div className="flex items-center gap-2">
+                      <span className="currency text-osps-red font-semibold">
+                        {formatCurrency(t.amount, group.currency)}
+                      </span>
+                      {isOwnedByMe && !isConfirming && (
+                        <button
+                          onClick={() => {
+                            setSettlingIndex(i)
+                            setSettlingAmount('')
+                          }}
+                          className="text-xs font-display font-semibold text-osps-green border border-osps-green/30 px-3 py-1.5 rounded-lg
+                                     hover:bg-osps-green/5 active:scale-[0.97] transition-all"
+                        >
+                          Paid
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Confirm row: appears below when entering an amount */}
+                  {isOwnedByMe && isConfirming && (
+                    <div className="mt-3 pt-3 border-t border-osps-gray-light flex items-center gap-2 animate-fadeIn">
+                      <div className="flex-1 relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-sm pointer-events-none">
+                          {group.currency}
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          autoFocus
+                          value={settlingAmount}
+                          onChange={(e) => {
+                            // Permit digits and at most one decimal point.
+                            const v = e.target.value.replace(/[^0-9.]/g, '')
+                            const parts = v.split('.')
+                            const sanitized = parts.length > 2
+                              ? parts[0] + '.' + parts.slice(1).join('')
+                              : v
+                            setSettlingAmount(sanitized)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') recordSettlement(t, settlingAmount)
+                            if (e.key === 'Escape') { setSettlingIndex(null); setSettlingAmount('') }
+                          }}
+                          placeholder={t.amount.toFixed(2)}
+                          aria-label="Amount paid"
+                          className="w-full pl-12 pr-3 py-2 text-[16px] font-mono rounded-lg
+                                     border border-osps-gray-light focus:border-osps-green focus:outline-none
+                                     focus:ring-2 focus:ring-osps-green/20 transition-all"
+                        />
+                      </div>
                       <button
-                        onClick={() => recordSettlement(t)}
-                        className="text-xs font-display font-semibold bg-osps-green text-white px-3 py-1.5 rounded-lg
+                        onClick={() => { setSettlingIndex(null); setSettlingAmount('') }}
+                        className="text-xs font-display font-semibold text-osps-gray px-3 py-2 rounded-lg
+                                   hover:bg-osps-gray-light/50 active:scale-[0.97] transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => recordSettlement(t, settlingAmount)}
+                        className="text-xs font-display font-semibold bg-osps-green text-white px-3 py-2 rounded-lg
                                    hover:bg-osps-green/90 active:scale-[0.97] transition-all"
                       >
                         Confirm
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => setSettlingIndex(i)}
-                        className="text-xs font-display font-semibold text-osps-green border border-osps-green/30 px-3 py-1.5 rounded-lg
-                                   hover:bg-osps-green/5 active:scale-[0.97] transition-all"
-                      >
-                        Paid
-                      </button>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
