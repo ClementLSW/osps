@@ -65,33 +65,33 @@ export default function AddExpense() {
   // Fetch exchange rate when currency or date changes
   useEffect(() => {
     const groupCurrency = group?.currency || 'SGD'
-    if (!expenseCurrency || expenseCurrency === groupCurrency || manualRate) return
+    if (!expenseCurrency || expenseCurrency === groupCurrency || manualRate) {
+      setRateLoading(false)
+      return
+    }
 
     let cancelled = false
     async function fetchRate() {
       setRateLoading(true)
       try {
-        const isToday = expenseDate === new Date().toISOString().slice(0, 10)
         const result = await fetchExchangeRate(
           expenseCurrency,
           groupCurrency,
-          isToday ? undefined : expenseDate
+          expenseDate,
         )
         if (!cancelled) setExchangeRate(result)
       } catch (err) {
-        const isHistorical = expenseDate !== new Date().toISOString().slice(0, 10)
         await log('fx.error', {
           from: expenseCurrency,
           to: group?.currency || 'SGD',
           date: expenseDate,
-          is_historical: isHistorical,
           http_status: err.status ?? null,
           error: err.message,
         })
         console.error('Exchange rate fetch failed:', err)
         if (!cancelled) toast.error('Could not fetch exchange rate')
       } finally {
-        if (!cancelled) setRateLoading(false)
+        setRateLoading(false)
       }
     }
     fetchRate()
