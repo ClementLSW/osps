@@ -49,26 +49,29 @@ export default async (request) => {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
-    const res = await fetch(frankfurterUrl, { signal: controller.signal })
-    clearTimeout(timeout)
+    try {
+      const res = await fetch(frankfurterUrl, { signal: controller.signal })
 
-    if (!res.ok) {
-      const body = await res.text()
-      console.error(`Frankfurter error ${res.status}:`, body)
-      return respond(res.status === 404 ? 404 : 502, {
-        error: `Exchange rate unavailable (upstream ${res.status})`,
-      })
+      if (!res.ok) {
+        const body = await res.text()
+        console.error(`Frankfurter error ${res.status}:`, body)
+        return respond(res.status === 404 ? 404 : 502, {
+          error: `Exchange rate unavailable (upstream ${res.status})`,
+        })
+      }
+
+      const data = await res.json()
+      const rate = data.rates?.[to]
+
+      if (rate == null) {
+        console.error(`No rate in Frankfurter response for ${from}→${to}:`, data)
+        return respond(502, { error: `No rate found for ${from} → ${to}` })
+      }
+
+      return respond(200, { from, to, rate, date: data.date })
+    } finally {
+      clearTimeout(timeout)
     }
-
-    const data = await res.json()
-    const rate = data.rates?.[to]
-
-    if (rate == null) {
-      console.error(`No rate in Frankfurter response for ${from}→${to}:`, data)
-      return respond(502, { error: `No rate found for ${from} → ${to}` })
-    }
-
-    return respond(200, { from, to, rate, date: data.date })
   } catch (err) {
     if (err.name === 'AbortError') {
       console.error(`Frankfurter timeout after ${TIMEOUT_MS}ms`)
