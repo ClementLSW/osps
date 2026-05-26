@@ -40,18 +40,38 @@ export async function fetchExchangeRate(from, to, date) {
   try {
     return await _fetchOnce(from, to, date)
   } catch (err) {
-    // Only retry if this was a /latest call (no explicit date) — historical
-    // dates don't have an ECB publish window issue worth retrying
-    if (date) throw err
+    // Only retry if this was a /latest call (no explicit date) and the
+    // failure is likely transient (server error, rate limiting, or network)
+    if (date || !_shouldRetryLatestFallback(err)) throw err
 
     // Retry with yesterday's date as fallback for ECB publish window instability
     const yesterday = new Date()
     yesterday.setUTCDate(yesterday.getUTCDate() - 1)
     const fallbackDate = yesterday.toISOString().slice(0, 10)
 
-    const result = await _fetchOnce(from, to, fallbackDate)
-    return { ...result, usedFallbackDate: true }
+    try {
+      const result = await _fetchOnce(from, to, fallbackDate)
+      return { ...result, usedFallbackDate: true }
+    } catch (fallbackErr) {
+      if (fallbackErr && typeof fallbackErr === 'object') {
+        if (!('cause' in fallbackErr)) fallbackErr.cause = err
+        fallbackErr.originalError = err
+      }
+      throw fallbackErr
+    }
   }
+}
+
+function _shouldRetryLatestFallback(err) {
+  const status = err?.status
+
+  if (status === 429) return true
+  if (typeof status === 'number' && status >= 500) return true
+
+  // fetch() network failures typically do not have an HTTP status
+  if (status == null) return true
+
+  return false
 }
 
 async function _fetchOnce(from, to, date) {
