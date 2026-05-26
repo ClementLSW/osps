@@ -84,6 +84,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/exchange-rate"
+  to = "/.netlify/functions/exchange-rate"
+  status = 200
+
+[[redirects]]
   from = "/google3a0ccd0dbbf0dd0b.html"
   to = "/google3a0ccd0dbbf0dd0b.html"
   status = 200
