@@ -20,6 +20,7 @@
  */
 
 import { parseCookies, decrypt } from './_utils/cookies.mjs'
+import { writeLog } from './_utils/logger.mjs'
 
 const PRIMARY_MODEL = 'google/gemini-2.0-flash-001'
 const FALLBACK_MODEL = 'qwen/qwen3-vl-30b-a3b-thinking'
@@ -88,20 +89,38 @@ export default async (request) => {
       return respond(400, { error: 'No image provided' })
     }
 
+    const startTime = Date.now()
     // Try primary model with auto-retry, then fall back
     let result = await callWithRetry(openrouterKey, PRIMARY_MODEL, image)
+    const hadFallback = result.error && result.fallback
 
-    if (result.error && result.fallback) {
+    if (hadFallback) {
       console.log('Primary model failed, trying fallback...')
       result = await callWithRetry(openrouterKey, FALLBACK_MODEL, image)
     }
 
     if (result.error) {
+      await writeLog('ocr.error', {
+        model: hadFallback ? FALLBACK_MODEL : PRIMARY_MODEL,
+        stage: 'model_call',
+        error: result.error,
+        raw_snippet: result.raw_snippet ?? null,
+      })
       return respond(result.status || 500, { error: result.error })
     }
 
     // Distribute tax + service charge proportionally into item amounts
     const normalized = normalizeItems(result.data)
+
+    await writeLog('ocr.success', {
+      model: hadFallback ? FALLBACK_MODEL : PRIMARY_MODEL,
+      currency: normalized.currency,
+      date: normalized.date,
+      total: normalized.total,
+      item_count: normalized.items.length,
+      had_fallback: hadFallback,
+      duration_ms: Date.now() - startTime,
+    }, 'info')
 
     return respond(200, normalized)
   } catch (err) {
@@ -128,6 +147,7 @@ async function callWithRetry(apiKey, model, image, retries = 1) {
 const REQUEST_TIMEOUT = 30_000 // 30 seconds
 
 async function callOpenRouter(apiKey, model, imageBase64) {
+  let content
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
@@ -177,7 +197,7 @@ async function callOpenRouter(apiKey, model, imageBase64) {
     }
 
     const data = await response.json()
-    const content = data.choices?.[0]?.message?.content
+    content = data.choices?.[0]?.message?.content
 
     if (!content) {
       return { error: 'No response from vision model', fallback: true }
@@ -204,7 +224,11 @@ async function callOpenRouter(apiKey, model, imageBase64) {
     }
     if (err instanceof SyntaxError) {
       console.error(`JSON parse failed (${model}):`, err.message)
-      return { error: 'Could not parse model response', fallback: true }
+      return {
+        error: 'Could not parse model response',
+        fallback: true,
+        raw_snippet: content?.slice(0, 200),
+      }
     }
     console.error(`OpenRouter call failed (${model}):`, err)
     return { error: 'Vision model request failed', fallback: true }

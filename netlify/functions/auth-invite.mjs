@@ -15,6 +15,7 @@
  */
 
 import { parseCookies, decrypt } from './_utils/cookies.mjs'
+import { writeLog } from './_utils/logger.mjs'
 
 export default async (request) => {
   const supabaseUrl = process.env.SUPABASE_URL
@@ -118,6 +119,11 @@ export default async (request) => {
       if (!addMember.ok) {
         const err = await addMember.text()
         console.error('Failed to add member:', err)
+        await writeLog('invite.error', {
+          stage: 'add_existing_member',
+          group_id: groupId,
+          error: err?.message ?? String(err),
+        })
         return respond(500, { error: 'Failed to add member to group' })
       }
 

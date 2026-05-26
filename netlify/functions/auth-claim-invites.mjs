@@ -13,6 +13,7 @@
  */
 
 import { parseCookies, decrypt } from './_utils/cookies.mjs'
+import { writeLog } from './_utils/logger.mjs'
 
 export default async (request) => {
   const supabaseUrl = process.env.SUPABASE_URL
@@ -101,6 +102,11 @@ export default async (request) => {
         claimed.push({ groupId: invite.group_id, groupName: invite.groups?.name })
       } else {
         console.error('Failed to add to group:', invite.group_id, await addRes.text())
+        await writeLog('invite.error', {
+          stage: 'claim',
+          group_id: invite.group_id,
+          error: `HTTP ${addRes.status}`,
+        })
       }
     }
 

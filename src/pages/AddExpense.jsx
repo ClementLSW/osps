@@ -6,6 +6,7 @@ import { splitEqual, splitExact, splitPercentage, splitShares, splitLineItems } 
 import { CURRENCIES } from '@/lib/currencies'
 import { formatCurrency } from '@/lib/formatCurrency'
 import { fetchExchangeRate } from '@/lib/exchangeRate'
+import { log } from '@/lib/logger'
 import toast from 'react-hot-toast'
 
 const SPLIT_MODES = [
@@ -78,6 +79,15 @@ export default function AddExpense() {
         )
         if (!cancelled) setExchangeRate(result)
       } catch (err) {
+        const isHistorical = expenseDate !== new Date().toISOString().slice(0, 10)
+        await log('fx.error', {
+          from: expenseCurrency,
+          to: group?.currency || 'SGD',
+          date: expenseDate,
+          is_historical: isHistorical,
+          http_status: err.status ?? null,
+          error: err.message,
+        })
         console.error('Exchange rate fetch failed:', err)
         if (!cancelled) toast.error('Could not fetch exchange rate')
       } finally {
@@ -358,6 +368,11 @@ export default function AddExpense() {
       .single()
 
     if (expError) {
+      await log('expense.save_error', {
+        stage: 'expense',
+        group_id: groupId,
+        error: expError?.message ?? String(expError),
+      })
       toast.error('Failed to create expense')
       console.error(expError)
       setSaving(false)
@@ -374,6 +389,11 @@ export default function AddExpense() {
       })))
 
     if (splitError) {
+      await log('expense.save_error', {
+        stage: 'splits',
+        group_id: groupId,
+        error: splitError?.message ?? String(splitError),
+      })
       toast.error('Failed to save splits')
       console.error(splitError)
       setSaving(false)
@@ -425,6 +445,11 @@ export default function AddExpense() {
       .eq('id', editId)
 
     if (expError) {
+      await log('expense.save_error', {
+        stage: 'expense',
+        group_id: groupId,
+        error: expError?.message ?? String(expError),
+      })
       toast.error('Failed to update expense')
       console.error(expError)
       setSaving(false)
@@ -453,6 +478,11 @@ export default function AddExpense() {
       })))
 
     if (splitError) {
+      await log('expense.save_error', {
+        stage: 'splits',
+        group_id: groupId,
+        error: splitError?.message ?? String(splitError),
+      })
       toast.error('Failed to save splits')
       console.error(splitError)
       setSaving(false)
