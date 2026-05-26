@@ -36,6 +36,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { auth } from '@/lib/api'
 import { setAccessToken, getSupabase } from '@/lib/supabase'
+import { log } from '@/lib/logger'
 import toast from 'react-hot-toast'
 
 const AuthContext = createContext(null)
@@ -84,6 +85,7 @@ export function AuthProvider({ children }) {
         }
       } catch (err) {
         console.error('Auth init error:', err)
+        await log('auth.error', { stage: 'init', error: err?.message ?? String(err) })
         if (mounted) {
           setUser(null)
           setProfile(null)
@@ -107,10 +109,12 @@ export function AuthProvider({ children }) {
 
       if (error) {
         console.error('Error fetching profile:', error)
+        await log('auth.error', { stage: 'fetchProfile', error: error?.message ?? String(error) })
       }
       setProfile(data)
     } catch (err) {
       console.error('fetchProfile failed:', err)
+      await log('auth.error', { stage: 'fetchProfile', error: err?.message ?? String(err) })
     } finally {
       setLoading(false)
     }
@@ -131,6 +135,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       // Non-critical — don't block the UI
       console.error('Claim invites failed:', err)
+      await log('auth.error', { stage: 'claimInvites', error: err?.message ?? String(err) })
     }
   }
 
