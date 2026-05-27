@@ -370,7 +370,7 @@ export default function GroupDetail() {
                       <span className="currency text-osps-red font-semibold">
                         {formatCurrency(t.amount, group.currency)}
                       </span>
-                      {isOwnedByMe && !isConfirming && (
+                      {!isConfirming && (
                         <button
                           onClick={() => {
                             setSettlingIndex(i)
@@ -386,51 +386,58 @@ export default function GroupDetail() {
                   </div>
 
                   {/* Confirm row: appears below when entering an amount */}
-                  {isOwnedByMe && isConfirming && (
-                    <div className="mt-3 pt-3 border-t border-osps-gray-light flex items-center gap-2 animate-fadeIn">
-                      <div className="flex-1 relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-sm pointer-events-none">
-                          {group.currency}
-                        </span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          autoFocus
-                          value={settlingAmount}
-                          onChange={(e) => {
-                            // Permit digits and at most one decimal point.
-                            const v = e.target.value.replace(/[^0-9.]/g, '')
-                            const parts = v.split('.')
-                            const sanitized = parts.length > 2
-                              ? parts[0] + '.' + parts.slice(1).join('')
-                              : v
-                            setSettlingAmount(sanitized)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') recordSettlement(t, settlingAmount)
-                            if (e.key === 'Escape') { setSettlingIndex(null); setSettlingAmount('') }
-                          }}
-                          placeholder={t.amount.toFixed(2)}
-                          aria-label="Amount paid"
-                          className="w-full pl-12 pr-3 py-2 text-[16px] font-mono rounded-lg
-                                     border border-osps-gray-light focus:border-osps-green focus:outline-none
-                                     focus:ring-2 focus:ring-osps-green/20 transition-all"
-                        />
+                  {isConfirming && (
+                    <div className="mt-3 pt-3 border-t border-osps-gray-light animate-fadeIn">
+                      {!isOwnedByMe && (
+                        <p className="text-xs text-osps-gray mb-2">
+                          Recording payment on behalf of <span className="font-medium">{fromName}</span>
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-osps-gray text-sm pointer-events-none">
+                            {group.currency}
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            autoFocus
+                            value={settlingAmount}
+                            onChange={(e) => {
+                              // Permit digits and at most one decimal point.
+                              const v = e.target.value.replace(/[^0-9.]/g, '')
+                              const parts = v.split('.')
+                              const sanitized = parts.length > 2
+                                ? parts[0] + '.' + parts.slice(1).join('')
+                                : v
+                              setSettlingAmount(sanitized)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') recordSettlement(t, settlingAmount)
+                              if (e.key === 'Escape') { setSettlingIndex(null); setSettlingAmount('') }
+                            }}
+                            placeholder={t.amount.toFixed(2)}
+                            aria-label="Amount paid"
+                            className="w-full pl-12 pr-3 py-2 text-[16px] font-mono rounded-lg
+                                       border border-osps-gray-light focus:border-osps-green focus:outline-none
+                                       focus:ring-2 focus:ring-osps-green/20 transition-all"
+                          />
+                        </div>
+                        <button
+                          onClick={() => { setSettlingIndex(null); setSettlingAmount('') }}
+                          className="text-xs font-display font-semibold text-osps-gray px-3 py-2 rounded-lg
+                                     hover:bg-osps-gray-light/50 active:scale-[0.97] transition-all"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => recordSettlement(t, settlingAmount)}
+                          className="text-xs font-display font-semibold bg-osps-green text-white px-3 py-2 rounded-lg
+                                     hover:bg-osps-green/90 active:scale-[0.97] transition-all"
+                        >
+                          Confirm
+                        </button>
                       </div>
-                      <button
-                        onClick={() => { setSettlingIndex(null); setSettlingAmount('') }}
-                        className="text-xs font-display font-semibold text-osps-gray px-3 py-2 rounded-lg
-                                   hover:bg-osps-gray-light/50 active:scale-[0.97] transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => recordSettlement(t, settlingAmount)}
-                        className="text-xs font-display font-semibold bg-osps-green text-white px-3 py-2 rounded-lg
-                                   hover:bg-osps-green/90 active:scale-[0.97] transition-all"
-                      >
-                        Confirm
-                      </button>
                     </div>
                   )}
                 </div>
