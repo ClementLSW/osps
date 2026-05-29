@@ -126,7 +126,7 @@ export default function AddExpense() {
     setExactAmounts(defaultExact)
 
     if (!isEdit) {
-      setSelectedMembers(memberList.map(m => m.id))
+      setSelectedMembers([])
       setPaidBy(profile?.id)
     } else {
       await loadExpenseForEdit(memberList, defaultShares, defaultPercentages, defaultExact)
@@ -268,6 +268,9 @@ export default function AddExpense() {
   function computeSplits() {
     const total = getConvertedTotal()
     if (!total || total <= 0) return { splits: [], error: 'Enter a valid amount' }
+    if (splitMode !== 'line_item' && selectedMembers.length === 0) {
+      return { splits: [], error: 'Select at least one member' }
+    }
 
     switch (splitMode) {
       case 'equal':
