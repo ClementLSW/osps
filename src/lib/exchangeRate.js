@@ -1,9 +1,8 @@
 /**
- * Exchange rate utilities — fetches from frankfurter.dev.
- * Always fetches by explicit date so rate reflects when money was spent.
+ * Exchange rate utilities — fetched via the /api/exchange-rate Netlify proxy
+ * (server-side, so no browser CORS). Always fetched by explicit date so the
+ * rate reflects when the money was spent.
  */
-
-const BASE_URL = 'https://api.frankfurter.dev/v1'
 
 /**
  * @param {string} from - Source currency (e.g. 'MYR')
@@ -16,18 +15,26 @@ export async function fetchExchangeRate(from, to, date) {
     return { from, to, rate: 1, date, fetchedAt: new Date().toISOString() }
   }
 
-  const res = await fetch(`${BASE_URL}/${date}?from=${from}&to=${to}`)
+  const params = new URLSearchParams({ from, to })
+  if (date) params.set('date', date)
+
+  const res = await fetch(`/api/exchange-rate?${params}`)
 
   if (!res.ok) {
-    const err = new Error(`Exchange rate fetch failed: ${res.status}`)
+    let message = `Exchange rate fetch failed: ${res.status}`
+    try {
+      const body = await res.json()
+      if (body?.error) message = body.error
+    } catch {
+      /* non-JSON error body — keep default message */
+    }
+    const err = new Error(message)
     err.status = res.status
     throw err
   }
 
   const data = await res.json()
-  const rate = data.rates?.[to]
+  if (data.rate == null) throw new Error(`No rate found for ${from} → ${to}`)
 
-  if (rate == null) throw new Error(`No rate found for ${from} → ${to}`)
-
-  return { from, to, rate, date: data.date, fetchedAt: new Date().toISOString() }
+  return { from, to, rate: data.rate, date: data.date, fetchedAt: new Date().toISOString() }
 }
