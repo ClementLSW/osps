@@ -28,7 +28,7 @@ export default function GroupDetail() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [receiptUrls, setReceiptUrls] = useState({}) // expenseId → signed URL
   const [memberAction, setMemberAction] = useState(null) // { type: 'remove'|'promote'|'demote', member }
-  const [showOlderSettlements, setShowOlderSettlements] = useState(false)
+  const [showSettlements, setShowSettlements] = useState(false)
 
   const { balances, transactions, myBalance } = useBalances(expenses, settlements, profile?.id)
 
@@ -605,7 +605,7 @@ export default function GroupDetail() {
         </div>
       )}
 
-      {/* Settlements */}
+      {/* Settlements (collapsible, closed by default) */}
       {(() => {
         // Belt-and-suspenders: enforce group scope at render time even though
         // the fetch already filters by group_id. Prevents any future bug
@@ -613,101 +613,43 @@ export default function GroupDetail() {
         const groupSettlements = settlements
           .filter(s => s.group_id === groupId)
           .sort((a, b) => new Date(b.settled_at) - new Date(a.settled_at))
-        const recentLimit = 5
-        const recentSettlements = groupSettlements.slice(0, recentLimit)
-        const olderSettlements = groupSettlements.slice(recentLimit)
-        const previewSettlement = olderSettlements[0]
 
         if (groupSettlements.length === 0) return null
 
         return (
           <div className="mt-8">
-            <h2 className="text-sm font-display font-semibold text-osps-gray uppercase tracking-wider mb-3">
-              Settlements ({groupSettlements.length})
-            </h2>
+            <button
+              onClick={() => setShowSettlements(v => !v)}
+              className="w-full flex items-center justify-between mb-3 group"
+              aria-expanded={showSettlements}
+            >
+              <h2 className="text-sm font-display font-semibold text-osps-gray uppercase tracking-wider">
+                Settlements ({groupSettlements.length})
+              </h2>
+              <span className={`text-sm font-display transition-all duration-200 ${showSettlements ? 'text-osps-black font-bold' : 'text-osps-gray/40 font-medium'}`}>
+                {showSettlements ? '✕' : '+'}
+              </span>
+            </button>
 
-            <div className="space-y-2">
-              {recentSettlements.map(s => (
-                <div key={s.id} className="card flex items-center justify-between py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm">
-                      <span className="font-medium">{getMemberName(s.paid_by)}</span>
-                      <span className="text-osps-gray"> paid </span>
-                      <span className="font-medium">{getMemberName(s.paid_to)}</span>
-                    </p>
-                    <p className="text-xs text-osps-gray mt-0.5">
-                      {formatRelativeDate(s.settled_at)}
-                    </p>
-                  </div>
-                  <span className="currency font-semibold text-osps-green ml-3 shrink-0">
-                    {formatCurrency(s.amount, group.currency)}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {olderSettlements.length > 0 && (
-              <div className="mt-2">
-                <button
-                  onClick={() => setShowOlderSettlements(v => !v)}
-                  className="w-full"
-                  aria-expanded={showOlderSettlements}
-                  aria-controls="older-settlements"
-                >
-                  <div className="flex items-center gap-3 py-2">
-                    <span className="h-px flex-1 bg-osps-gray-light" />
-                    <span className="text-osps-gray text-sm leading-none transition-transform duration-200">
-                      {showOlderSettlements ? '⌃' : '⌄'}
-                    </span>
-                    <span className="h-px flex-1 bg-osps-gray-light" />
-                  </div>
-                  <p className="text-xs font-display font-semibold text-osps-gray uppercase tracking-wider">
-                    {showOlderSettlements ? 'Hide older settlements' : `Show ${olderSettlements.length} older settlements`}
-                  </p>
-                </button>
-
-                {!showOlderSettlements && previewSettlement && (
-                  <div className="relative h-12 overflow-hidden mt-2 rounded-2xl">
-                    <div className="card flex items-center justify-between py-3 pointer-events-none">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm">
-                          <span className="font-medium">{getMemberName(previewSettlement.paid_by)}</span>
-                          <span className="text-osps-gray"> paid </span>
-                          <span className="font-medium">{getMemberName(previewSettlement.paid_to)}</span>
-                        </p>
-                        <p className="text-xs text-osps-gray mt-0.5">
-                          {formatRelativeDate(previewSettlement.settled_at)}
-                        </p>
-                      </div>
-                      <span className="currency font-semibold text-osps-green ml-3 shrink-0">
-                        {formatCurrency(previewSettlement.amount, group.currency)}
-                      </span>
+            {showSettlements && (
+              <div className="space-y-2 animate-fadeIn">
+                {groupSettlements.map(s => (
+                  <div key={s.id} className="card flex items-center justify-between py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm">
+                        <span className="font-medium">{getMemberName(s.paid_by)}</span>
+                        <span className="text-osps-gray"> paid </span>
+                        <span className="font-medium">{getMemberName(s.paid_to)}</span>
+                      </p>
+                      <p className="text-xs text-osps-gray mt-0.5">
+                        {formatRelativeDate(s.settled_at)}
+                      </p>
                     </div>
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-white/70 to-white" />
+                    <span className="currency font-semibold text-osps-green ml-3 shrink-0">
+                      {formatCurrency(s.amount, group.currency)}
+                    </span>
                   </div>
-                )}
-
-                {showOlderSettlements && (
-                  <div id="older-settlements" className="space-y-2 mt-2 animate-fadeIn">
-                    {olderSettlements.map(s => (
-                      <div key={s.id} className="card flex items-center justify-between py-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm">
-                            <span className="font-medium">{getMemberName(s.paid_by)}</span>
-                            <span className="text-osps-gray"> paid </span>
-                            <span className="font-medium">{getMemberName(s.paid_to)}</span>
-                          </p>
-                          <p className="text-xs text-osps-gray mt-0.5">
-                            {formatRelativeDate(s.settled_at)}
-                          </p>
-                        </div>
-                        <span className="currency font-semibold text-osps-green ml-3 shrink-0">
-                          {formatCurrency(s.amount, group.currency)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                ))}
               </div>
             )}
           </div>
